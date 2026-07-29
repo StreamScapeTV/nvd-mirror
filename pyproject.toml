@@ -1,6 +1,6 @@
 [project]
 name = "nvd-mirror"
-version = "0.1.0"
+version = "0.2.0"
 description = "Self-hosted NVD JSON feed mirror with an NVD CVE API-compatible read endpoint"
 readme = "README.md"
 license = "MIT"
