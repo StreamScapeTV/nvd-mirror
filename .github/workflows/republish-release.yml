@@ -131,6 +131,7 @@ jobs:
           cp -R charts/nvd-mirror "${RUNNER_TEMP}/nvd-mirror-chart"
           python - "${RUNNER_TEMP}/nvd-mirror-chart" "$OWNER" "$REPOSITORY" "$VERSION" <<'PY'
           import pathlib
+          import re
           import sys
 
           chart_dir = pathlib.Path(sys.argv[1])
@@ -167,12 +168,27 @@ jobs:
               raise SystemExit(f'Temporary chart image repository was not rewritten to {expected_image}')
 
           chart = (chart_dir / 'Chart.yaml').read_text()
+          version_annotation = f'org.opencontainers.image.version: "{version}"'
+          if 'org.opencontainers.image.version:' in chart:
+              chart = re.sub(
+                  r'(?m)^(\s*)org\.opencontainers\.image\.version:.*$',
+                  rf'\1{version_annotation}',
+                  chart,
+              )
+          else:
+              chart = chart.replace(
+                  '  org.opencontainers.image.licenses: MIT\n',
+                  f'  org.opencontainers.image.licenses: MIT\n  {version_annotation}\n',
+              )
+          (chart_dir / 'Chart.yaml').write_text(chart)
+
           for expected in [
               f'version: {version}',
               f'appVersion: "{version}"',
               f'https://github.com/{repository}',
               f'org.opencontainers.image.source: https://github.com/{repository}',
               'org.opencontainers.image.licenses: MIT',
+              f'org.opencontainers.image.version: "{version}"',
           ]:
               if expected not in chart:
                   raise SystemExit(f'Missing expected chart metadata: {expected}')

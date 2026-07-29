@@ -26,6 +26,19 @@ def test_release_versions_are_aligned() -> None:
     assert next(iter(versions.values())) == '0.2.1'
 
 
+def test_package_metadata_has_personal_source_license_and_version() -> None:
+    dockerfile = Path('Dockerfile').read_text(encoding='utf-8')
+    chart = Path('charts/nvd-mirror/Chart.yaml').read_text(encoding='utf-8')
+
+    assert 'org.opencontainers.image.source="https://github.com/mimranfaruqi/nvd-mirror"' in dockerfile
+    assert 'org.opencontainers.image.licenses="MIT"' in dockerfile
+    assert 'org.opencontainers.image.version="${APP_VERSION}"' in dockerfile
+
+    assert 'org.opencontainers.image.source: https://github.com/mimranfaruqi/nvd-mirror' in chart
+    assert 'org.opencontainers.image.licenses: MIT' in chart
+    assert 'org.opencontainers.image.version: "0.2.1"' in chart
+
+
 def test_current_metadata_does_not_reference_previous_package_owner() -> None:
     old_owner = ''.join(['stream', 'scape', 'tv'])
     old_display_owner = ''.join(['Stream', 'Scape', 'TV'])

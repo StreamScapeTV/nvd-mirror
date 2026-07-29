@@ -375,13 +375,15 @@ jobs:
             gh release edit "$tag" \
               --repo "$GITHUB_REPOSITORY" \
               --title "nvd-mirror ${VERSION}" \
-              --notes-file dist/release-notes.md
+              --notes-file dist/release-notes.md \
+              --latest
           else
             gh release create "$tag" \
               --repo "$GITHUB_REPOSITORY" \
               --target "$GITHUB_SHA" \
               --title "nvd-mirror ${VERSION}" \
-              --notes-file dist/release-notes.md
+              --notes-file dist/release-notes.md \
+              --latest
           fi
           gh release upload "$tag" \
             --repo "$GITHUB_REPOSITORY" \
