@@ -4,6 +4,17 @@ This chart deploys the NVD Mirror API, dashboard, scheduler, persistent raw-feed
 
 The API and scheduler run as two containers in one pod and share the same mirror volume. The Deployment uses the `Recreate` strategy so `ReadWriteOnce` storage does not create multi-attach failures during upgrades.
 
+## Release artifacts
+
+Release `v0.2.0` aligns the application and chart versions:
+
+```text
+Application image: ghcr.io/streamscapetv/nvd-mirror:0.2.0
+Helm chart:        oci://ghcr.io/streamscapetv/charts/nvd-mirror --version 0.2.0
+```
+
+The chart uses its `appVersion` as the default application image tag, so installing chart `0.2.0` pulls image `0.2.0` unless `image.tag` is overridden.
+
 ## Install from GitHub Container Registry
 
 Published releases are OCI Helm artifacts:
@@ -11,7 +22,7 @@ Published releases are OCI Helm artifacts:
 ```bash
 helm upgrade --install nvd-mirror \
   oci://ghcr.io/streamscapetv/charts/nvd-mirror \
-  --version 0.1.0 \
+  --version 0.2.0 \
   --namespace nvd-mirror \
   --create-namespace \
   --set-string postgresql.auth.password='replace-with-a-strong-password'
@@ -27,6 +38,8 @@ Disable automatic bootstrap when attaching an existing populated database:
 
 ## Install from the repository
 
+Source contributors can install the checked-out chart directly:
+
 ```bash
 helm upgrade --install nvd-mirror ./charts/nvd-mirror \
   --namespace nvd-mirror \
@@ -39,7 +52,7 @@ helm upgrade --install nvd-mirror ./charts/nvd-mirror \
 ```bash
 helm upgrade --install nvd-mirror \
   oci://ghcr.io/streamscapetv/charts/nvd-mirror \
-  --version 0.1.0 \
+  --version 0.2.0 \
   --namespace nvd-mirror \
   --create-namespace \
   --set-string postgresql.auth.password='replace-with-a-strong-password' \
@@ -66,7 +79,7 @@ Then install with:
 ```bash
 helm upgrade --install nvd-mirror \
   oci://ghcr.io/streamscapetv/charts/nvd-mirror \
-  --version 0.1.0 \
+  --version 0.2.0 \
   --namespace nvd-mirror \
   --create-namespace \
   --set postgresql.enabled=false \
