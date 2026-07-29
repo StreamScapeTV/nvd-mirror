@@ -1,0 +1,36 @@
+{
+  "snapshotDate": "2026-06-18",
+  "source": "https://nvd.nist.gov/feeds/json/cve/2.0",
+  "notes": [
+    "Official NVD JSON 2.0 year-feed snapshot gathered on 2026-06-19 from the 2026-06-18 nightly feed set.",
+    "The 2002 feed includes CVEs from years prior to and including 2002. Cache-side bucketing must map CVE years <= 2002 into the 2002 bucket."
+  ],
+  "minimumTotalResults": 359177,
+  "years": {
+    "2002": {"minimumTotalResults": 6771, "timestamp": "2026-06-18T03:04:57.6105294", "sampleCveId": "CVE-1999-0095"},
+    "2003": {"minimumTotalResults": 1555, "timestamp": "2026-06-18T03:04:55.9430696", "sampleCveId": "CVE-2003-0061"},
+    "2004": {"minimumTotalResults": 2707, "timestamp": "2026-06-18T03:04:53.8707914", "sampleCveId": "CVE-2004-1776"},
+    "2005": {"minimumTotalResults": 4770, "timestamp": "2026-06-18T03:04:50.5239862", "sampleCveId": "CVE-2005-1247"},
+    "2006": {"minimumTotalResults": 7145, "timestamp": "2026-06-18T03:04:45.2158132", "sampleCveId": "CVE-2006-0018"},
+    "2007": {"minimumTotalResults": 6580, "timestamp": "2026-06-18T03:04:39.8649409", "sampleCveId": "CVE-2007-0015"},
+    "2008": {"minimumTotalResults": 7179, "timestamp": "2026-06-18T03:04:34.3119396", "sampleCveId": "CVE-2008-0061"},
+    "2009": {"minimumTotalResults": 5054, "timestamp": "2026-06-18T03:04:29.1557943", "sampleCveId": "CVE-2009-0022"},
+    "2010": {"minimumTotalResults": 5249, "timestamp": "2026-06-18T03:04:23.654893", "sampleCveId": "CVE-2010-0157"},
+    "2011": {"minimumTotalResults": 4898, "timestamp": "2026-06-18T03:04:18.1897945", "sampleCveId": "CVE-2011-0346"},
+    "2012": {"minimumTotalResults": 5939, "timestamp": "2026-06-18T03:04:11.8400993", "sampleCveId": "CVE-2012-0026"},
+    "2013": {"minimumTotalResults": 6830, "timestamp": "2026-06-18T03:04:04.8439641", "sampleCveId": "CVE-2013-0721"},
+    "2014": {"minimumTotalResults": 9002, "timestamp": "2026-06-18T03:03:57.8637337", "sampleCveId": "CVE-2014-0791"},
+    "2015": {"minimumTotalResults": 8779, "timestamp": "2026-06-18T03:03:51.0591088", "sampleCveId": "CVE-2015-0361"},
+    "2016": {"minimumTotalResults": 10634, "timestamp": "2026-06-18T03:03:42.7931602", "sampleCveId": "CVE-2016-1283"},
+    "2017": {"minimumTotalResults": 17071, "timestamp": "2026-06-18T03:03:31.1705284", "sampleCveId": "CVE-2017-5005"},
+    "2018": {"minimumTotalResults": 17817, "timestamp": "2026-06-18T03:03:18.5022887", "sampleCveId": "CVE-2018-3810"},
+    "2019": {"minimumTotalResults": 17601, "timestamp": "2026-06-18T03:03:03.9524212", "sampleCveId": "CVE-2019-3494"},
+    "2020": {"minimumTotalResults": 21050, "timestamp": "2026-06-18T03:02:44.3850623", "sampleCveId": "CVE-2020-5179"},
+    "2021": {"minimumTotalResults": 23428, "timestamp": "2026-06-18T03:02:22.2110963", "sampleCveId": "CVE-2021-3002"},
+    "2022": {"minimumTotalResults": 27516, "timestamp": "2026-06-18T03:01:57.4424392", "sampleCveId": "CVE-2022-22293"},
+    "2023": {"minimumTotalResults": 31204, "timestamp": "2026-06-18T03:01:29.7298214", "sampleCveId": "CVE-2023-0028"},
+    "2024": {"minimumTotalResults": 39148, "timestamp": "2026-06-18T03:00:55.0851396", "sampleCveId": "CVE-2024-0069"},
+    "2025": {"minimumTotalResults": 44755, "timestamp": "2026-06-18T03:00:21.972655", "sampleCveId": "CVE-2025-0168"},
+    "2026": {"minimumTotalResults": 26495, "timestamp": "2026-06-18T03:00:02.0694426", "sampleCveId": "CVE-2026-0544"}
+  }
+}
