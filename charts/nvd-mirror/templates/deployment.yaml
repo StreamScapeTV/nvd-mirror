@@ -1,0 +1,228 @@
+{{- include "nvd-mirror.validateValues" . }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "nvd-mirror.fullname" . }}
+  labels:
+    {{- include "nvd-mirror.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  revisionHistoryLimit: {{ .Values.revisionHistoryLimit }}
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "nvd-mirror.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "nvd-mirror.selectorLabels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "nvd-mirror.serviceAccountName" . }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automount }}
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      initContainers:
+        - name: wait-for-database
+          image: {{ include "nvd-mirror.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["sh", "-ec"]
+          args:
+            - |
+              python - <<'PY'
+              import os
+              import time
+              from sqlalchemy import create_engine
+
+              deadline = time.monotonic() + 600
+              last_error = None
+              while time.monotonic() < deadline:
+                  try:
+                      engine = create_engine(os.environ["DATABASE_URL"], pool_pre_ping=True)
+                      with engine.connect():
+                          pass
+                      engine.dispose()
+                      print("database is ready", flush=True)
+                      raise SystemExit(0)
+                  except Exception as exc:
+                      last_error = exc
+                      print(f"waiting for database: {exc}", flush=True)
+                      time.sleep(5)
+              raise SystemExit(f"database did not become ready: {last_error}")
+              PY
+          env:
+            {{- include "nvd-mirror.secretEnv" . | nindent 12 }}
+          resources:
+            {{- toYaml .Values.bootstrap.resources | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          volumeMounts:
+            {{- include "nvd-mirror.commonVolumeMounts" . | nindent 12 }}
+        {{- if .Values.bootstrap.enabled }}
+        - name: bootstrap
+          image: {{ include "nvd-mirror.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["sh", "-ec"]
+          args:
+            - |
+              marker={{ .Values.bootstrap.markerFile | quote }}
+              if [ -f "$marker" ] && [ {{ .Values.bootstrap.force | quote }} != "true" ]; then
+                if python - <<'PY'
+              from sqlalchemy import func, select
+              from app.db import create_tables, session_scope
+              from app.models import CveRecord
+
+              create_tables()
+              with session_scope() as db:
+                  count = db.execute(select(func.count()).select_from(CveRecord)).scalar_one()
+              raise SystemExit(0 if count > 0 else 1)
+              PY
+                then
+                  echo "bootstrap already completed and the database contains CVEs: $marker"
+                  exit 0
+                fi
+                echo "bootstrap marker exists but the database is empty; rebuilding"
+              fi
+              python -m app.sync bootstrap
+              date -u +%Y-%m-%dT%H:%M:%SZ > "$marker"
+          envFrom:
+            - configMapRef:
+                name: {{ include "nvd-mirror.fullname" . }}
+            {{- with .Values.additionalEnvFrom }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          env:
+            {{- include "nvd-mirror.secretEnv" . | nindent 12 }}
+            {{- with .Values.additionalEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          resources:
+            {{- toYaml .Values.bootstrap.resources | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          volumeMounts:
+            {{- include "nvd-mirror.commonVolumeMounts" . | nindent 12 }}
+        {{- end }}
+      containers:
+        - name: api
+          image: {{ include "nvd-mirror.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "nvd-mirror.fullname" . }}
+            {{- with .Values.additionalEnvFrom }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          env:
+            {{- include "nvd-mirror.secretEnv" . | nindent 12 }}
+            {{- with .Values.additionalEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.config.port }}
+              protocol: TCP
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            failureThreshold: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            {{- include "nvd-mirror.commonVolumeMounts" . | nindent 12 }}
+        {{- if .Values.scheduler.enabled }}
+        - name: scheduler
+          image: {{ include "nvd-mirror.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["python", "-m", "app.scheduler"]
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "nvd-mirror.fullname" . }}
+            {{- with .Values.additionalEnvFrom }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          env:
+            {{- include "nvd-mirror.secretEnv" . | nindent 12 }}
+            {{- with .Values.additionalEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          resources:
+            {{- toYaml .Values.scheduler.resources | nindent 12 }}
+          volumeMounts:
+            {{- include "nvd-mirror.commonVolumeMounts" . | nindent 12 }}
+        {{- end }}
+      volumes:
+        - name: mirror
+          {{- if .Values.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ default (printf "%s-mirror" (include "nvd-mirror.fullname" .)) .Values.persistence.existingClaim }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        {{- if .Values.certificates.existingSecret }}
+        - name: certificates
+          secret:
+            secretName: {{ .Values.certificates.existingSecret | quote }}
+        {{- end }}
+        {{- with .Values.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if .Values.priorityClassName }}
+      priorityClassName: {{ .Values.priorityClassName | quote }}
+      {{- end }}
+      {{- if .Values.runtimeClassName }}
+      runtimeClassName: {{ .Values.runtimeClassName | quote }}
+      {{- end }}

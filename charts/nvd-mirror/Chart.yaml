@@ -1,0 +1,22 @@
+apiVersion: v2
+name: nvd-mirror
+description: Self-hosted NVD JSON 2.0 feed mirror, API, dashboard, and scheduler
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+kubeVersion: ">=1.25.0-0"
+home: https://github.com/StreamScapeTV/nvd-mirror
+sources:
+  - https://github.com/StreamScapeTV/nvd-mirror
+maintainers:
+  - name: StreamScapeTV
+    url: https://github.com/StreamScapeTV
+annotations:
+  artifacthub.io/license: MIT
+  artifacthub.io/links: |
+    - name: Source
+      url: https://github.com/StreamScapeTV/nvd-mirror
+    - name: Documentation
+      url: https://github.com/StreamScapeTV/nvd-mirror#readme
+  org.opencontainers.image.source: https://github.com/StreamScapeTV/nvd-mirror
+  org.opencontainers.image.licenses: MIT

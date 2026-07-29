@@ -1,0 +1,28 @@
+{{- if .Values.bootstrap.enabled }}
+The first application pod remains in the bootstrap init container until the
+historical NVD feeds have been imported. The completion marker is stored at:
+
+  {{ .Values.bootstrap.markerFile }}
+
+The bootstrap is resumable. It is skipped on later pod starts unless
+bootstrap.force=true.
+{{- end }}
+
+{{- if .Values.ingress.enabled }}
+Dashboard:
+{{- range .Values.ingress.hosts }}
+  {{ if $.Values.ingress.tls }}https{{ else }}http{{ end }}://{{ .host }}/dashboard
+API:
+  {{ if $.Values.ingress.tls }}https{{ else }}http{{ end }}://{{ .host }}/rest/json/cves/2.0
+{{- end }}
+{{- else }}
+Access the dashboard with:
+
+  kubectl -n {{ .Release.Namespace }} port-forward service/{{ include "nvd-mirror.fullname" . }} 8000:{{ .Values.service.port }}
+
+Then open http://localhost:8000/dashboard.
+{{- end }}
+
+Run the Helm health test with:
+
+  helm test {{ .Release.Name }} -n {{ .Release.Namespace }}

@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "{{ include "nvd-mirror.fullname" . }}-test-connection"
+  labels:
+    {{- include "nvd-mirror.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+spec:
+  restartPolicy: Never
+  containers:
+    - name: curl
+      image: {{ include "nvd-mirror.image" . | quote }}
+      imagePullPolicy: {{ .Values.image.pullPolicy }}
+      command:
+        - sh
+        - -ec
+        - curl -fsS "http://{{ include "nvd-mirror.fullname" . }}:{{ .Values.service.port }}/health"

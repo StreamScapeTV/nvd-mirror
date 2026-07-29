@@ -2,6 +2,7 @@
 
 [![CI](https://github.com/StreamScapeTV/nvd-mirror/actions/workflows/ci.yml/badge.svg)](https://github.com/StreamScapeTV/nvd-mirror/actions/workflows/ci.yml)
 [![Container](https://github.com/StreamScapeTV/nvd-mirror/actions/workflows/container.yml/badge.svg)](https://github.com/StreamScapeTV/nvd-mirror/actions/workflows/container.yml)
+[![Helm](https://github.com/StreamScapeTV/nvd-mirror/actions/workflows/helm.yml/badge.svg)](https://github.com/StreamScapeTV/nvd-mirror/actions/workflows/helm.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 `nvd-mirror` is a self-hosted mirror for the NIST National Vulnerability Database (NVD) JSON 2.0 CVE feeds. It stores validated feed files locally, imports CVEs into PostgreSQL, exposes a read-only NVD CVE API-compatible endpoint for common automation workflows, and includes an operational dashboard.
@@ -29,7 +30,9 @@ Mirror:   https://nvd.example.org/rest/json/cves/2.0
 - raw `/mirror/nvd/*` feed endpoint;
 - read-only operational dashboard;
 - built-in scheduler for `modified`, `recent`, and yearly feed checks;
-- Docker Compose deployment and regression tests.
+- Docker Compose deployment;
+- Kubernetes Helm chart with optional PostgreSQL, persistent storage, Ingress, and resumable bootstrap;
+- multi-version Python, container, and Helm validation in GitHub Actions.
 
 NVD documents that yearly feeds update daily, while `modified` and `recent` update approximately every two hours. NVD recommends checking `.meta` before downloading `.json.gz`: https://nvd.nist.gov/vuln/data-feeds
 
@@ -55,9 +58,9 @@ PostgreSQL importer
         +--> /dashboard
 ```
 
-Docker Compose starts `postgres`, `api`, and `scheduler`. Manual profiles provide `bootstrap`, `sync-modified`, `mirror-all`, `stats-backfill`, and `test` jobs.
+The API and scheduler share the same PostgreSQL database and raw-feed mirror. Docker Compose runs them as separate services. The Helm chart runs them as sidecars in one pod so a `ReadWriteOnce` mirror volume is mounted by only one pod.
 
-## Quick start
+## Docker Compose quick start
 
 ```bash
 git clone https://github.com/StreamScapeTV/nvd-mirror.git
@@ -88,6 +91,81 @@ docker compose --profile manual run --rm bootstrap
 
 Bootstrap imports every yearly feed from `DEFAULT_FROM_YEAR` through the current year, then imports `modified`.
 
+## Kubernetes and Helm
+
+The chart is stored in [`charts/nvd-mirror`](charts/nvd-mirror) and released as an OCI Helm artifact in GitHub Container Registry.
+
+Install the published chart:
+
+```bash
+helm upgrade --install nvd-mirror \
+  oci://ghcr.io/streamscapetv/charts/nvd-mirror \
+  --version 0.1.0 \
+  --namespace nvd-mirror \
+  --create-namespace \
+  --set-string postgresql.auth.password='replace-with-a-strong-password'
+```
+
+Install directly from a clone:
+
+```bash
+helm upgrade --install nvd-mirror ./charts/nvd-mirror \
+  --namespace nvd-mirror \
+  --create-namespace \
+  --set-string postgresql.auth.password='replace-with-a-strong-password'
+```
+
+By default, the chart creates:
+
+- one `nvd-mirror` Deployment containing the API and scheduler containers;
+- a persistent raw-feed mirror PVC;
+- a single-instance PostgreSQL StatefulSet and persistent database storage;
+- a resumable bootstrap init container for the historical feeds;
+- a ClusterIP Service;
+- an optional Kubernetes Ingress.
+
+The Deployment uses the `Recreate` strategy to avoid `ReadWriteOnce` multi-attach failures during upgrades. A marker on the mirror PVC and a database count check prevent a successful historical bootstrap from running again unnecessarily.
+
+For an existing populated database, disable the initial bootstrap:
+
+```bash
+--set bootstrap.enabled=false
+```
+
+For an external PostgreSQL database, create a Secret containing `DATABASE_URL`, disable the included database, and reference the Secret:
+
+```bash
+kubectl -n nvd-mirror create secret generic nvd-mirror-database \
+  --from-literal=DATABASE_URL='postgresql+psycopg://user:password@postgres.example:5432/nvd'
+
+helm upgrade --install nvd-mirror \
+  oci://ghcr.io/streamscapetv/charts/nvd-mirror \
+  --version 0.1.0 \
+  --namespace nvd-mirror \
+  --create-namespace \
+  --set postgresql.enabled=false \
+  --set database.existingSecret=nvd-mirror-database \
+  --set bootstrap.enabled=false
+```
+
+Ingress example:
+
+```bash
+helm upgrade --install nvd-mirror \
+  oci://ghcr.io/streamscapetv/charts/nvd-mirror \
+  --version 0.1.0 \
+  --namespace nvd-mirror \
+  --create-namespace \
+  --set-string postgresql.auth.password='replace-with-a-strong-password' \
+  --set ingress.enabled=true \
+  --set ingress.className=nginx \
+  --set ingress.hosts[0].host=nvd.example.org \
+  --set ingress.tls[0].secretName=nvd-example-tls \
+  --set ingress.tls[0].hosts[0]=nvd.example.org
+```
+
+See the [chart documentation](charts/nvd-mirror/README.md) and [`values.yaml`](charts/nvd-mirror/values.yaml) for persistent storage, existing claims, private registries, external secrets, private CAs, resource limits, scheduling, and all environment-backed settings.
+
 ## Synchronization
 
 Default behavior:
@@ -98,7 +176,7 @@ Default behavior:
 - six-second minimum delay between upstream requests;
 - unchanged `.json.gz` files are never downloaded.
 
-Manual commands:
+Manual Docker Compose commands:
 
 ```bash
 docker compose --profile manual run --rm sync-modified
@@ -108,15 +186,21 @@ docker compose run --rm --entrypoint python scheduler -m app.scheduler --print-p
 
 ## Persistent data
 
+Docker Compose uses:
+
 ```text
-./volumes/database              PostgreSQL data
-./volumes/nvd-feed-mirror-data  NVD .meta and .json.gz files
-./volumes/certs                 optional CA and TLS files
+./volumes/database               PostgreSQL data
+./volumes/nvd-feed-mirror-data   NVD .meta and .json.gz files
+./volumes/certs                  optional CA and TLS files
 ```
+
+The Helm chart uses separate persistent volumes for PostgreSQL and the raw feed mirror. Existing claims are supported through `postgresql.persistence.existingClaim` and `persistence.existingClaim`.
 
 ## Configuration
 
-`.env` is the single configuration entry point. Important settings:
+Docker Compose reads `.env` as its single configuration entry point. The Helm chart exposes equivalent settings under `config`, `database`, `nvdApiKey`, `postgresql`, and `persistence`.
+
+Important environment settings:
 
 ```env
 APP_NAME=nvd-mirror
@@ -137,7 +221,7 @@ Feed modes:
 |---|---|
 | `managed` | Download locally, validate, then import |
 | `local` | Use existing local files without upstream access |
-| `remote` | Legacy direct upstream import |
+| `remote` | Direct upstream download/import compatibility mode |
 
 `NVD_FEED_UPSTREAM_BASE_URL`, when set, overrides `NVD_MIRROR_BASE_URL`.
 
@@ -156,7 +240,7 @@ An invalid or incomplete download never replaces an existing valid local file.
 
 ### TLS
 
-Most deployments should terminate public TLS at a reverse proxy. To trust a private upstream CA:
+Most deployments should terminate public TLS at a reverse proxy or Kubernetes Ingress. To trust a private upstream CA:
 
 ```env
 UPSTREAM_VERIFY_TLS=true
@@ -227,21 +311,35 @@ docker compose --profile manual run --rm stats-backfill
 
 Partial breakdowns are hidden until coverage is complete.
 
-## Tests
+## Tests and validation
 
 ```bash
 python -m venv .venv
 . .venv/bin/activate
 python -m pip install -r requirements-dev.txt
 pytest -q
+python -m compileall -q app tests
+bash -n scripts/*.sh
 ```
-
-See [docs/VALIDATION.md](docs/VALIDATION.md) for the complete deterministic validation checklist.
 
 Docker test stage:
 
 ```bash
 docker compose --profile test run --rm test
+```
+
+Helm validation:
+
+```bash
+helm lint charts/nvd-mirror \
+  --set-string postgresql.auth.password=ci-password \
+  --set bootstrap.enabled=false
+
+helm template nvd-mirror charts/nvd-mirror \
+  --namespace nvd-mirror \
+  --set-string postgresql.auth.password=ci-password \
+  --set bootstrap.enabled=false \
+  > /tmp/nvd-mirror.yaml
 ```
 
 Running-service checks:
@@ -259,23 +357,33 @@ API_BASE_URL=http://localhost:8000 ./scripts/nvd_mirror_file_baseline_test.sh
 CACHE_API_BASE=http://localhost:8000/rest/json/cves/2.0 OFFICIAL_FEED_BASE_URL=https://nvd.nist.gov/feeds/json/cve/2.0 ./scripts/nvd_live_feed_baseline_test.sh
 ```
 
-Live comparison scripts contact NVD and should be run deliberately, not in every normal CI execution.
+Live comparison scripts contact NVD and should be run deliberately, not in every normal CI execution. See [docs/VALIDATION.md](docs/VALIDATION.md) for the deterministic checklist.
 
-## Images
+## Images and Helm releases
+
+Build a local image:
 
 ```bash
 docker build --build-arg APP_VERSION=0.1.0 -t nvd-mirror:0.1.0 .
 ```
 
+Publish a multi-platform image manually:
+
 ```bash
-docker buildx build --platform linux/amd64,linux/arm64 --build-arg APP_VERSION=0.1.0 -t ghcr.io/your-org/nvd-mirror:0.1.0 --push .
+docker buildx build \
+  --platform linux/amd64,linux/arm64 \
+  --build-arg APP_VERSION=0.1.0 \
+  -t ghcr.io/your-org/nvd-mirror:0.1.0 \
+  --push .
 ```
 
-GitHub Actions test the project and publish tagged/default-branch images to GitHub Container Registry.
+GitHub Actions test every change. Version tags such as `v0.1.0` publish the multi-platform application image and the matching OCI Helm chart to GitHub Container Registry.
 
 ## Security
 
-Never commit `.env`, credentials, API keys, private CAs, TLS private keys, database files, or downloaded feeds. Keep PostgreSQL bound to loopback unless external access is intentional. Protect the API/dashboard with network controls or a reverse proxy when exposed outside a trusted network. See [SECURITY.md](SECURITY.md).
+Never commit `.env`, credentials, API keys, private CAs, TLS private keys, database files, or downloaded feeds. Keep PostgreSQL private unless external access is intentional. Protect the API/dashboard with network controls, a reverse proxy, or Ingress when exposed outside a trusted network. See [SECURITY.md](SECURITY.md).
+
+For production installations, prefer existing Kubernetes Secrets or an external secret manager instead of putting passwords directly in Helm values.
 
 ## Contributing
 
