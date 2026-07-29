@@ -1,0 +1,29 @@
+=== branches ===
+ci-validation
+dependabot/docker/python-3.14-slim
+dependabot/github_actions/actions/checkout-7
+dependabot/github_actions/actions/setup-python-7
+dependabot/pip/fastapi-gte-0.140.13-and-lt-1.0
+dependabot/pip/psycopg-gte-3.3.4-and-lt-4.0
+dependabot/pip/pydantic-settings-gte-2.14.2-and-lt-3.0
+dependabot/pip/pytest-gte-9.1.1-and-lt-10.0
+dependabot/pip/requests-gte-2.34.2-and-lt-3.0
+dependabot/pip/uvicorn-gte-0.51.0-and-lt-1.0
+main
+repository-finalization
+=== open pull requests ===
+#9 dependabot/pip/pydantic-settings-gte-2.14.2-and-lt-3.0 -> main: Update pydantic-settings requirement from <3.0,>=2.12.0 to >=2.14.2,<3.0
+#8 dependabot/pip/psycopg-gte-3.3.4-and-lt-4.0 -> main: Update psycopg requirement from <4.0,>=3.2.12 to >=3.3.4,<4.0
+#7 dependabot/pip/requests-gte-2.34.2-and-lt-3.0 -> main: Update requests requirement from <3.0,>=2.32.5 to >=2.34.2,<3.0
+#6 dependabot/pip/fastapi-gte-0.140.13-and-lt-1.0 -> main: Update fastapi requirement from <1.0,>=0.128.0 to >=0.140.13,<1.0
+#5 dependabot/pip/pytest-gte-9.1.1-and-lt-10.0 -> main: Update pytest requirement from <10.0,>=9.0.0 to >=9.1.1,<10.0
+#4 dependabot/pip/uvicorn-gte-0.51.0-and-lt-1.0 -> main: Update uvicorn requirement from <1.0,>=0.40.0 to >=0.51.0,<1.0
+#3 dependabot/github_actions/actions/setup-python-7 -> main: Bump actions/setup-python from 6 to 7
+#2 dependabot/docker/python-3.14-slim -> main: Bump python from 3.13-slim to 3.14-slim
+#1 dependabot/github_actions/actions/checkout-7 -> main: Update actions/checkout and stabilize CI tests
+=== active rules ===
+deletion ruleset=19942431 source=StreamScapeTV/nvd-mirror
+non_fast_forward ruleset=19942431 source=StreamScapeTV/nvd-mirror
+update ruleset=19942431 source=StreamScapeTV/nvd-mirror
+required_linear_history ruleset=19942431 source=StreamScapeTV/nvd-mirror
+GH_SESSION_TOKEN_AVAILABLE=no
