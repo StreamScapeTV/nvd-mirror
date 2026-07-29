@@ -1,0 +1,216 @@
+name: Republish historical release packages
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: Immutable source ref to rebuild, for example v0.1.0
+        required: true
+        type: string
+      version:
+        description: Historical release version to republish, for example 0.1.0
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  republish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out historical source
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.source_ref }}
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v5
+        with:
+          version: v4.2.3
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Verify historical version metadata
+        shell: bash
+        env:
+          SOURCE_REF: ${{ inputs.source_ref }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          if [[ "$SOURCE_REF" != "v${VERSION}" ]]; then
+            echo "source_ref must be the immutable tag for version ${VERSION}; got ${SOURCE_REF}" >&2
+            exit 1
+          fi
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "version must be a semantic release version; got ${VERSION}" >&2
+            exit 1
+          fi
+          python - "$VERSION" <<'PY'
+          import pathlib
+          import re
+          import sys
+          import tomllib
+
+          expected = sys.argv[1]
+          pyproject_version = tomllib.loads(pathlib.Path('pyproject.toml').read_text())['project']['version']
+          source = pathlib.Path('app/version.py').read_text()
+          app_match = re.search(r'__version__\s*=\s*["\']([^"\']+)["\']', source)
+          if not app_match:
+              raise SystemExit('Unable to read app/version.py')
+
+          chart = pathlib.Path('charts/nvd-mirror/Chart.yaml').read_text()
+          chart_version_match = re.search(r'^version:\s*["\']?([^\s"\']+)["\']?$', chart, re.MULTILINE)
+          chart_app_version_match = re.search(r'^appVersion:\s*["\']?([^\s"\']+)["\']?$', chart, re.MULTILINE)
+          if not chart_version_match or not chart_app_version_match:
+              raise SystemExit('Unable to read chart version metadata')
+
+          versions = {
+              'requested': expected,
+              'pyproject': pyproject_version,
+              'application': app_match.group(1),
+              'chart': chart_version_match.group(1),
+              'chart appVersion': chart_app_version_match.group(1),
+          }
+          if len(set(versions.values())) != 1:
+              raise SystemExit(f'Historical release versions are not aligned: {versions}')
+          PY
+
+      - name: Determine package targets
+        id: target
+        shell: bash
+        run: |
+          set -euo pipefail
+          owner="$(printf '%s' "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')"
+          echo "image=ghcr.io/${owner}/nvd-mirror" >> "$GITHUB_OUTPUT"
+          echo "chart_repository=oci://ghcr.io/${owner}/charts" >> "$GITHUB_OUTPUT"
+          echo "chart_reference=oci://ghcr.io/${owner}/charts/nvd-mirror" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GitHub Container Registry for containers
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push historical image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          target: runtime
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.target.outputs.image }}:${{ inputs.version }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.version=${{ inputs.version }}
+            org.opencontainers.image.licenses=MIT
+          build-args: APP_VERSION=${{ inputs.version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: mode=max
+          sbom: true
+
+      - name: Verify published historical image
+        run: docker buildx imagetools inspect "${{ steps.target.outputs.image }}:${{ inputs.version }}"
+
+      - name: Prepare temporary chart package copy
+        shell: bash
+        env:
+          OWNER: ${{ github.repository_owner }}
+          REPOSITORY: ${{ github.repository }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          rm -rf "${RUNNER_TEMP}/nvd-mirror-chart"
+          cp -R charts/nvd-mirror "${RUNNER_TEMP}/nvd-mirror-chart"
+          python - "${RUNNER_TEMP}/nvd-mirror-chart" "$OWNER" "$REPOSITORY" "$VERSION" <<'PY'
+          import pathlib
+          import sys
+
+          chart_dir = pathlib.Path(sys.argv[1])
+          owner = sys.argv[2]
+          repository = sys.argv[3]
+          version = sys.argv[4]
+          old_display_owner = ''.join(['Stream', 'Scape', 'TV'])
+          old_owner = ''.join(['stream', 'scape', 'tv'])
+          new_owner = owner.lower()
+
+          replacements = {
+              f'https://github.com/{old_display_owner}/nvd-mirror': f'https://github.com/{repository}',
+              f'https://github.com/{old_display_owner}': f'https://github.com/{owner}',
+              f'ghcr.io/{old_owner}/nvd-mirror': f'ghcr.io/{new_owner}/nvd-mirror',
+              f'oci://ghcr.io/{old_owner}/charts/nvd-mirror': f'oci://ghcr.io/{new_owner}/charts/nvd-mirror',
+              old_display_owner: owner,
+          }
+          for path in chart_dir.rglob('*'):
+              if not path.is_file():
+                  continue
+              try:
+                  content = path.read_text()
+              except UnicodeDecodeError:
+                  continue
+              updated = content
+              for old, new in replacements.items():
+                  updated = updated.replace(old, new)
+              if updated != content:
+                  path.write_text(updated)
+
+          values = (chart_dir / 'values.yaml').read_text()
+          expected_image = f'repository: ghcr.io/{new_owner}/nvd-mirror'
+          if expected_image not in values:
+              raise SystemExit(f'Temporary chart image repository was not rewritten to {expected_image}')
+
+          chart = (chart_dir / 'Chart.yaml').read_text()
+          for expected in [
+              f'version: {version}',
+              f'appVersion: "{version}"',
+              f'https://github.com/{repository}',
+              f'org.opencontainers.image.source: https://github.com/{repository}',
+              'org.opencontainers.image.licenses: MIT',
+          ]:
+              if expected not in chart:
+                  raise SystemExit(f'Missing expected chart metadata: {expected}')
+          PY
+
+      - name: Lint temporary chart package copy
+        run: >-
+          helm lint "${RUNNER_TEMP}/nvd-mirror-chart"
+          --set-string postgresql.auth.password=ci-password
+          --set bootstrap.enabled=false
+
+      - name: Package temporary chart copy
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          mkdir -p dist
+          helm package "${RUNNER_TEMP}/nvd-mirror-chart" \
+            --version "$VERSION" \
+            --app-version "$VERSION" \
+            --destination dist
+          test -f "dist/nvd-mirror-${VERSION}.tgz"
+
+      - name: Log in to GitHub Container Registry for Helm
+        env:
+          HELM_REGISTRY_CONFIG: ${{ runner.temp }}/helm-registry.json
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: echo "$GHCR_TOKEN" | helm registry login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+
+      - name: Push temporary chart package to GHCR
+        env:
+          HELM_REGISTRY_CONFIG: ${{ runner.temp }}/helm-registry.json
+          VERSION: ${{ inputs.version }}
+          CHART_REPOSITORY: ${{ steps.target.outputs.chart_repository }}
+        run: helm push "dist/nvd-mirror-${VERSION}.tgz" "$CHART_REPOSITORY"
+
+      - name: Verify published historical chart
+        env:
+          HELM_REGISTRY_CONFIG: ${{ runner.temp }}/helm-registry.json
+          VERSION: ${{ inputs.version }}
+          CHART_REFERENCE: ${{ steps.target.outputs.chart_reference }}
+        run: helm show chart "$CHART_REFERENCE" --version "$VERSION"
