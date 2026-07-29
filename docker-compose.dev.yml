@@ -1,0 +1,40 @@
+x-runtime-build: &runtime-build
+  build:
+    context: .
+    target: runtime
+    args:
+      APP_VERSION: ${APP_VERSION:-0.2.0}
+  image: nvd-mirror:local
+  pull_policy: never
+
+services:
+  api:
+    <<: *runtime-build
+
+  scheduler:
+    <<: *runtime-build
+
+  bootstrap:
+    <<: *runtime-build
+
+  sync-modified:
+    <<: *runtime-build
+
+  mirror-all:
+    <<: *runtime-build
+
+  stats-backfill:
+    <<: *runtime-build
+
+  test:
+    build:
+      context: .
+      target: test
+      args:
+        APP_VERSION: ${APP_VERSION:-0.2.0}
+    image: nvd-mirror:test
+    pull_policy: never
+    profiles: ["test"]
+    environment:
+      DATABASE_URL: sqlite:////tmp/nvd-mirror-tests.sqlite3
+    command: ["pytest", "-q"]
