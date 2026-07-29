@@ -6,14 +6,14 @@ The API and scheduler run as two containers in one pod and share the same mirror
 
 ## Release artifacts
 
-Release `v0.2.0` aligns the application and chart versions:
+Release `v0.2.1` aligns the application and chart versions:
 
 ```text
-Application image: ghcr.io/streamscapetv/nvd-mirror:0.2.0
-Helm chart:        oci://ghcr.io/streamscapetv/charts/nvd-mirror --version 0.2.0
+Application image: ghcr.io/mimranfaruqi/nvd-mirror:0.2.1
+Helm chart:        oci://ghcr.io/mimranfaruqi/charts/nvd-mirror --version 0.2.1
 ```
 
-The chart uses its `appVersion` as the default application image tag, so installing chart `0.2.0` pulls image `0.2.0` unless `image.tag` is overridden.
+The chart uses its `appVersion` as the default application image tag, so installing chart `0.2.1` pulls image `0.2.1` unless `image.tag` is overridden.
 
 ## Install from GitHub Container Registry
 
@@ -21,8 +21,8 @@ Published releases are OCI Helm artifacts:
 
 ```bash
 helm upgrade --install nvd-mirror \
-  oci://ghcr.io/streamscapetv/charts/nvd-mirror \
-  --version 0.2.0 \
+  oci://ghcr.io/mimranfaruqi/charts/nvd-mirror \
+  --version 0.2.1 \
   --namespace nvd-mirror \
   --create-namespace \
   --set-string postgresql.auth.password='replace-with-a-strong-password'
@@ -51,8 +51,8 @@ helm upgrade --install nvd-mirror ./charts/nvd-mirror \
 
 ```bash
 helm upgrade --install nvd-mirror \
-  oci://ghcr.io/streamscapetv/charts/nvd-mirror \
-  --version 0.2.0 \
+  oci://ghcr.io/mimranfaruqi/charts/nvd-mirror \
+  --version 0.2.1 \
   --namespace nvd-mirror \
   --create-namespace \
   --set-string postgresql.auth.password='replace-with-a-strong-password' \
@@ -78,8 +78,8 @@ Then install with:
 
 ```bash
 helm upgrade --install nvd-mirror \
-  oci://ghcr.io/streamscapetv/charts/nvd-mirror \
-  --version 0.2.0 \
+  oci://ghcr.io/mimranfaruqi/charts/nvd-mirror \
+  --version 0.2.1 \
   --namespace nvd-mirror \
   --create-namespace \
   --set postgresql.enabled=false \
@@ -112,7 +112,7 @@ Ingress TLS is recommended instead of application-level TLS.
 
 | Value | Default | Description |
 |---|---:|---|
-| `image.repository` | `ghcr.io/streamscapetv/nvd-mirror` | Application image repository |
+| `image.repository` | `ghcr.io/mimranfaruqi/nvd-mirror` | Application image repository |
 | `image.tag` | chart `appVersion` | Application image tag |
 | `bootstrap.enabled` | `true` | Run resumable historical bootstrap before the API starts |
 | `persistence.size` | `20Gi` | Raw feed mirror PVC size |

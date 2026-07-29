@@ -1,6 +1,6 @@
 [project]
 name = "nvd-mirror"
-version = "0.2.0"
+version = "0.2.1"
 description = "Self-hosted NVD JSON feed mirror with an NVD CVE API-compatible read endpoint"
 readme = "README.md"
 license = "MIT"
@@ -17,9 +17,9 @@ classifiers = [
   "Topic :: System :: Systems Administration",
 ]
 [project.urls]
-Homepage = "https://github.com/StreamScapeTV/nvd-mirror"
-Repository = "https://github.com/StreamScapeTV/nvd-mirror"
-Issues = "https://github.com/StreamScapeTV/nvd-mirror/issues"
+Homepage = "https://github.com/mimranfaruqi/nvd-mirror"
+Repository = "https://github.com/mimranfaruqi/nvd-mirror"
+Issues = "https://github.com/mimranfaruqi/nvd-mirror/issues"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = ["integration: tests that call a configured live NVD feed source or running service"]

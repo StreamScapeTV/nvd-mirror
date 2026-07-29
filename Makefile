@@ -1,6 +1,6 @@
 IMAGE ?= nvd-mirror:local
-VERSION ?= 0.2.0
-GHCR_IMAGE ?= ghcr.io/streamscapetv/nvd-mirror:$(VERSION)
+VERSION ?= 0.2.1
+GHCR_IMAGE ?= ghcr.io/mimranfaruqi/nvd-mirror:$(VERSION)
 COMPOSE_DEV = docker compose -f docker-compose.yml -f docker-compose.dev.yml
 
 .PHONY: help init up down logs ps health bootstrap sync-modified mirror-all stats-backfill test test-docker build push clean

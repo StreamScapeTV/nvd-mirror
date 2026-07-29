@@ -5,7 +5,7 @@ Contributions are welcome through issues and pull requests.
 ## Source checkout
 
 ```bash
-git clone https://github.com/StreamScapeTV/nvd-mirror.git
+git clone https://github.com/mimranfaruqi/nvd-mirror.git
 cd nvd-mirror
 cp .env.example .env
 mkdir -p volumes/database volumes/nvd-feed-mirror-data volumes/certs

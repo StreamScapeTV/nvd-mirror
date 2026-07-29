@@ -22,7 +22,7 @@ data:
   NVD_UPSTREAM_RETRIES: {{ .Values.config.nvdUpstreamRetries | quote }}
   NVD_UPSTREAM_RETRY_BACKOFF_SECONDS: {{ .Values.config.nvdUpstreamRetryBackoffSeconds | quote }}
   NVD_DOWNLOAD_PROGRESS_INTERVAL_BYTES: {{ .Values.config.nvdDownloadProgressIntervalBytes | quote }}
-  NVD_USER_AGENT: {{ default (printf "nvd-mirror/%s (+https://github.com/StreamScapeTV/nvd-mirror)" (default .Chart.AppVersion .Values.config.appVersion)) .Values.config.nvdUserAgent | quote }}
+  NVD_USER_AGENT: {{ default (printf "nvd-mirror/%s (+https://github.com/mimranfaruqi/nvd-mirror)" (default .Chart.AppVersion .Values.config.appVersion)) .Values.config.nvdUserAgent | quote }}
   REQUEST_TIMEOUT_SECONDS: {{ .Values.config.requestTimeoutSeconds | quote }}
   DEFAULT_FROM_YEAR: {{ .Values.config.defaultFromYear | quote }}
   MAX_RESULTS_PER_PAGE: {{ .Values.config.maxResultsPerPage | quote }}

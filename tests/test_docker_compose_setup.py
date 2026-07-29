@@ -81,4 +81,4 @@ def test_env_example_contains_single_entrypoint_variables_for_compose() -> None:
         'POSTGRES_PASSWORD',
     ]:
         assert f'{name}=' in env
-    assert 'NVD_MIRROR_IMAGE=ghcr.io/streamscapetv/nvd-mirror:0.2.0' in env
+    assert 'NVD_MIRROR_IMAGE=ghcr.io/mimranfaruqi/nvd-mirror:0.2.1' in env
