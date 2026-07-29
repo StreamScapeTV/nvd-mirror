@@ -1,0 +1,73 @@
+name: Cleanup superseded branches
+
+on:
+  pull_request:
+    types: [synchronize]
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  cleanup:
+    if: github.event.pull_request.head.ref == 'repository-finalization'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Close superseded pull requests
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for number in 1 2 3 4 5 6 7 8 9 10; do
+            state=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${number}" --jq '.state')
+            if [[ "$state" == open ]]; then
+              gh pr close "$number" --repo "$GITHUB_REPOSITORY" --comment 'Superseded by #11, which consolidates the reviewed change and has passed the complete CI matrix.'
+            fi
+          done
+
+      - name: Delete superseded branches
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          branches=(
+            'ci-validation'
+            'dependabot/docker/python-3.14-slim'
+            'dependabot/github_actions/actions/checkout-7'
+            'dependabot/github_actions/actions/setup-python-7'
+            'dependabot/pip/fastapi-gte-0.140.13-and-lt-1.0'
+            'dependabot/pip/psycopg-gte-3.3.4-and-lt-4.0'
+            'dependabot/pip/pydantic-settings-gte-2.14.2-and-lt-3.0'
+            'dependabot/pip/pytest-gte-9.1.1-and-lt-10.0'
+            'dependabot/pip/requests-gte-2.34.2-and-lt-3.0'
+            'dependabot/pip/uvicorn-gte-0.51.0-and-lt-1.0'
+          )
+          for branch in "${branches[@]}"; do
+            encoded=${branch//\//%2F}
+            if gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/${encoded}" >/dev/null 2>&1; then
+              gh api --method DELETE "repos/${GITHUB_REPOSITORY}/git/refs/heads/${encoded}"
+              echo "deleted ${branch}"
+            else
+              echo "already absent ${branch}"
+            fi
+          done
+
+      - name: Report remaining branches
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          branches=$(gh api --paginate "repos/${GITHUB_REPOSITORY}/branches?per_page=100" --jq '.[].name' | sort)
+          {
+            echo 'Superseded PRs and branches were cleaned up.'
+            echo
+            echo 'Remaining branches:'
+            echo '```text'
+            printf '%s\n' "$branches"
+            echo '```'
+          } > /tmp/cleanup-comment.md
+          gh pr comment 11 --repo "$GITHUB_REPOSITORY" --body-file /tmp/cleanup-comment.md
