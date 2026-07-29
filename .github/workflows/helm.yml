@@ -7,6 +7,8 @@ on:
       - '.github/workflows/helm.yml'
       - 'README.md'
       - 'docs/VALIDATION.md'
+      - 'app/version.py'
+      - 'pyproject.toml'
   push:
     branches: [main]
     tags: ['v*']
@@ -15,10 +17,12 @@ on:
       - '.github/workflows/helm.yml'
       - 'README.md'
       - 'docs/VALIDATION.md'
+      - 'app/version.py'
+      - 'pyproject.toml'
   workflow_dispatch:
     inputs:
       version:
-        description: Chart version to publish, for example 0.1.0
+        description: Version to publish; it must match Chart.yaml and application metadata
         required: false
         type: string
 
@@ -41,6 +45,36 @@ jobs:
         uses: azure/setup-helm@v5
         with:
           version: ${{ matrix.helm-version }}
+
+      - name: Verify aligned release metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          chart_version=$(helm show chart charts/nvd-mirror | awk '$1 == "version:" {gsub(/"/, "", $2); print $2}')
+          app_version=$(helm show chart charts/nvd-mirror | awk '$1 == "appVersion:" {gsub(/"/, "", $2); print $2}')
+          python - "$chart_version" "$app_version" <<'PY'
+          import pathlib
+          import re
+          import sys
+          import tomllib
+
+          chart_version, chart_app_version = sys.argv[1:]
+          pyproject_version = tomllib.loads(pathlib.Path('pyproject.toml').read_text())['project']['version']
+          source = pathlib.Path('app/version.py').read_text()
+          match = re.search(r'__version__\s*=\s*["\']([^"\']+)["\']', source)
+          if not match:
+              raise SystemExit('Unable to read __version__ from app/version.py')
+          application_version = match.group(1)
+          versions = {
+              'chart': chart_version,
+              'chart appVersion': chart_app_version,
+              'pyproject': pyproject_version,
+              'application': application_version,
+          }
+          if len(set(versions.values())) != 1:
+              raise SystemExit(f'Release versions are not aligned: {versions}')
+          print(f'Aligned release version: {chart_version}')
+          PY
 
       - name: Lint chart
         run: >-
@@ -73,11 +107,12 @@ jobs:
       - name: Package chart
         run: |
           mkdir -p dist
+          chart_version=$(helm show chart charts/nvd-mirror | awk '$1 == "version:" {gsub(/"/, "", $2); print $2}')
           helm package charts/nvd-mirror --destination dist
-          test -f dist/nvd-mirror-0.1.0.tgz
+          test -f "dist/nvd-mirror-${chart_version}.tgz"
 
   publish:
-    name: Publish OCI chart
+    name: Publish image and OCI chart
     needs: validate
     if: >-
       startsWith(github.ref, 'refs/tags/v') ||
@@ -95,13 +130,21 @@ jobs:
         with:
           version: v4.2.3
 
-      - name: Determine release version
-        id: version
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Determine and verify release version
+        id: release
         shell: bash
         env:
           REQUESTED_VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
+          chart_version=$(helm show chart charts/nvd-mirror | awk '$1 == "version:" {gsub(/"/, "", $2); print $2}')
+          app_version=$(helm show chart charts/nvd-mirror | awk '$1 == "appVersion:" {gsub(/"/, "", $2); print $2}')
           if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
             version="${GITHUB_REF_NAME#v}"
           else
@@ -111,11 +154,64 @@ jobs:
             echo "Version must be semantic, for example 0.1.0; got: $version" >&2
             exit 1
           fi
+          if [[ "$version" != "$chart_version" || "$version" != "$app_version" ]]; then
+            echo "Requested version $version must match chart version $chart_version and appVersion $app_version" >&2
+            exit 1
+          fi
+          python - "$version" <<'PY'
+          import pathlib
+          import re
+          import sys
+          import tomllib
+
+          expected = sys.argv[1]
+          pyproject_version = tomllib.loads(pathlib.Path('pyproject.toml').read_text())['project']['version']
+          source = pathlib.Path('app/version.py').read_text()
+          match = re.search(r'__version__\s*=\s*["\']([^"\']+)["\']', source)
+          if not match:
+              raise SystemExit('Unable to read __version__ from app/version.py')
+          versions = {'requested': expected, 'pyproject': pyproject_version, 'application': match.group(1)}
+          if len(set(versions.values())) != 1:
+              raise SystemExit(f'Release versions are not aligned: {versions}')
+          PY
+          owner="$(printf '%s' "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')"
+          image="ghcr.io/${owner}/nvd-mirror"
+          chart_repository="oci://ghcr.io/${owner}/charts"
           echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "image=$image" >> "$GITHUB_OUTPUT"
+          echo "chart_repository=$chart_repository" >> "$GITHUB_OUTPUT"
+          echo "chart_reference=${chart_repository}/nvd-mirror" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GitHub Container Registry for containers
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and publish versioned application image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          target: runtime
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ steps.release.outputs.image }}:${{ steps.release.outputs.version }}
+            ${{ steps.release.outputs.image }}:latest
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.version=${{ steps.release.outputs.version }}
+            org.opencontainers.image.licenses=MIT
+          build-args: APP_VERSION=${{ steps.release.outputs.version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: mode=max
+          sbom: true
 
       - name: Package chart
         env:
-          VERSION: ${{ steps.version.outputs.version }}
+          VERSION: ${{ steps.release.outputs.version }}
         run: |
           mkdir -p dist
           helm package charts/nvd-mirror \
@@ -123,28 +219,22 @@ jobs:
             --app-version "$VERSION" \
             --destination dist
 
-      - name: Log in to GitHub Container Registry
+      - name: Log in to GitHub Container Registry for Helm
         env:
           HELM_REGISTRY_CONFIG: ${{ runner.temp }}/helm-registry.json
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: echo "$GHCR_TOKEN" | helm registry login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
 
       - name: Push chart to GHCR
-        id: push
-        shell: bash
         env:
           HELM_REGISTRY_CONFIG: ${{ runner.temp }}/helm-registry.json
-          VERSION: ${{ steps.version.outputs.version }}
-        run: |
-          set -euo pipefail
-          owner="$(printf '%s' "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')"
-          repository="oci://ghcr.io/${owner}/charts"
-          helm push "dist/nvd-mirror-${VERSION}.tgz" "$repository"
-          echo "reference=${repository}/nvd-mirror" >> "$GITHUB_OUTPUT"
+          VERSION: ${{ steps.release.outputs.version }}
+          CHART_REPOSITORY: ${{ steps.release.outputs.chart_repository }}
+        run: helm push "dist/nvd-mirror-${VERSION}.tgz" "$CHART_REPOSITORY"
 
       - name: Verify published chart
         env:
           HELM_REGISTRY_CONFIG: ${{ runner.temp }}/helm-registry.json
-          REFERENCE: ${{ steps.push.outputs.reference }}
-          VERSION: ${{ steps.version.outputs.version }}
-        run: helm show chart "$REFERENCE" --version "$VERSION"
+          CHART_REFERENCE: ${{ steps.release.outputs.chart_reference }}
+          VERSION: ${{ steps.release.outputs.version }}
+        run: helm show chart "$CHART_REFERENCE" --version "$VERSION"
