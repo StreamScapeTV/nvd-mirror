@@ -2,6 +2,7 @@
 
 [![CI](https://github.com/StreamScapeTV/nvd-mirror/actions/workflows/ci.yml/badge.svg)](https://github.com/StreamScapeTV/nvd-mirror/actions/workflows/ci.yml)
 [![Container](https://github.com/StreamScapeTV/nvd-mirror/actions/workflows/container.yml/badge.svg)](https://github.com/StreamScapeTV/nvd-mirror/actions/workflows/container.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 `nvd-mirror` is a self-hosted mirror for the NIST National Vulnerability Database (NVD) JSON 2.0 CVE feeds. It stores validated feed files locally, imports CVEs into PostgreSQL, exposes a read-only NVD CVE API-compatible endpoint for common automation workflows, and includes an operational dashboard.
 
@@ -235,6 +236,8 @@ python -m pip install -r requirements-dev.txt
 pytest -q
 ```
 
+See [docs/VALIDATION.md](docs/VALIDATION.md) for the complete deterministic validation checklist.
+
 Docker test stage:
 
 ```bash
@@ -280,4 +283,6 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
-No license has been selected yet. Until a license file is added, default copyright rules apply.
+The source code is licensed under the [MIT License](LICENSE).
+
+NVD data, NIST services, and third-party components retain their own terms. See [NOTICE.md](NOTICE.md) for attribution and project-disclaimer details.
