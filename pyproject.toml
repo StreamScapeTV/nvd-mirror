@@ -3,13 +3,16 @@ name = "nvd-mirror"
 version = "0.1.0"
 description = "Self-hosted NVD JSON feed mirror with an NVD CVE API-compatible read endpoint"
 readme = "README.md"
+license = "MIT"
 requires-python = ">=3.12"
 classifiers = [
   "Development Status :: 3 - Alpha",
   "Framework :: FastAPI",
+  "License :: OSI Approved :: MIT License",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
   "Topic :: Security",
   "Topic :: System :: Systems Administration",
 ]

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import gzip
 import importlib
-import json
 import os
 import sys
 from pathlib import Path
@@ -21,6 +20,7 @@ def _client(tmp_path: Path, monkeypatch) -> TestClient:
     import app.config as config_module
     config_module.get_settings.cache_clear()
     main_module = importlib.import_module('app.main')
+    main_module.create_tables()
     return TestClient(main_module.app)
 
 
