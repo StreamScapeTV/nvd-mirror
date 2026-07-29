@@ -22,6 +22,21 @@ def test_compose_uses_env_file_as_single_runtime_entrypoint() -> None:
     assert 'NVD_MIRROR_BASE_URL: ${NVD_MIRROR_BASE_URL' not in compose
 
 
+def test_deployment_compose_pulls_the_published_image_without_building_source() -> None:
+    compose = Path('docker-compose.yml').read_text(encoding='utf-8')
+    assert 'image: ${NVD_MIRROR_IMAGE}' in compose
+    assert 'pull_policy: ${NVD_MIRROR_PULL_POLICY:-missing}' in compose
+    assert 'build:' not in compose
+
+
+def test_contributor_compose_override_builds_runtime_and_test_images() -> None:
+    compose = Path('docker-compose.dev.yml').read_text(encoding='utf-8')
+    assert 'target: runtime' in compose
+    assert 'target: test' in compose
+    assert 'image: nvd-mirror:local' in compose
+    assert 'image: nvd-mirror:test' in compose
+
+
 def test_compose_has_persistent_local_bind_mounts() -> None:
     compose = Path('docker-compose.yml').read_text(encoding='utf-8')
     assert './volumes/database:/var/lib/postgresql/data' in compose
@@ -48,5 +63,22 @@ def test_compose_has_manual_bootstrap_and_sync_profiles() -> None:
 
 def test_env_example_contains_single_entrypoint_variables_for_compose() -> None:
     env = Path('.env.example').read_text(encoding='utf-8')
-    for name in ['API_HOST_PORT','POSTGRES_HOST_PORT','NVD_MIRROR_IMAGE','NVD_MIRROR_BASE_URL','NVD_FEED_SOURCE_MODE','NVD_FEED_MIRROR_DIR','NVD_UPSTREAM_REQUEST_DELAY_SECONDS','NVD_SYNC_TIMEZONE','NVD_SYNC_MODIFIED_EVERY_HOURS','NVD_SYNC_MODIFIED_MINUTE','NVD_SYNC_DAILY_MIRROR_HOUR','NVD_SYNC_DAILY_MIRROR_MINUTE','DATABASE_URL','POSTGRES_PASSWORD']:
+    for name in [
+        'API_HOST_PORT',
+        'POSTGRES_HOST_PORT',
+        'NVD_MIRROR_IMAGE',
+        'NVD_MIRROR_PULL_POLICY',
+        'NVD_MIRROR_BASE_URL',
+        'NVD_FEED_SOURCE_MODE',
+        'NVD_FEED_MIRROR_DIR',
+        'NVD_UPSTREAM_REQUEST_DELAY_SECONDS',
+        'NVD_SYNC_TIMEZONE',
+        'NVD_SYNC_MODIFIED_EVERY_HOURS',
+        'NVD_SYNC_MODIFIED_MINUTE',
+        'NVD_SYNC_DAILY_MIRROR_HOUR',
+        'NVD_SYNC_DAILY_MIRROR_MINUTE',
+        'DATABASE_URL',
+        'POSTGRES_PASSWORD',
+    ]:
         assert f'{name}=' in env
+    assert 'NVD_MIRROR_IMAGE=ghcr.io/streamscapetv/nvd-mirror:0.2.0' in env

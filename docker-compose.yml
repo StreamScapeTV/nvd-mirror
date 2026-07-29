@@ -1,10 +1,8 @@
 name: nvd-mirror
 
 x-app: &app
-  build:
-    context: .
-    target: runtime
   image: ${NVD_MIRROR_IMAGE}
+  pull_policy: ${NVD_MIRROR_PULL_POLICY:-missing}
   env_file:
     - .env
   depends_on:
@@ -66,13 +64,3 @@ services:
     <<: *app
     profiles: ["manual"]
     command: ["python", "-m", "app.nvd_stats", "backfill-missing", "--batch-size", "1000"]
-
-  test:
-    build:
-      context: .
-      target: test
-    image: ${NVD_MIRROR_IMAGE}-test
-    profiles: ["test"]
-    environment:
-      DATABASE_URL: sqlite:////tmp/nvd-mirror-tests.sqlite3
-    command: ["pytest", "-q"]

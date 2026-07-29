@@ -5,36 +5,212 @@
 [![Helm](https://github.com/StreamScapeTV/nvd-mirror/actions/workflows/helm.yml/badge.svg)](https://github.com/StreamScapeTV/nvd-mirror/actions/workflows/helm.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-`nvd-mirror` is a self-hosted mirror for the NIST National Vulnerability Database (NVD) JSON 2.0 CVE feeds. It stores validated feed files locally, imports CVEs into PostgreSQL, exposes a read-only NVD CVE API-compatible endpoint for common automation workflows, and includes an operational dashboard.
+`nvd-mirror` is a self-hosted mirror for the NIST National Vulnerability Database (NVD) JSON 2.0 CVE feeds. It stores validated feed files, imports CVEs into PostgreSQL, exposes a read-only NVD CVE API-compatible endpoint, serves the raw mirror files, and provides an operational dashboard.
 
-```text
-/rest/json/cves/2.0
-```
-
-A client can keep the official API path and change only the host:
+Clients can preserve the official API path and change only the host:
 
 ```text
 Official: https://services.nvd.nist.gov/rest/json/cves/2.0
 Mirror:   https://nvd.example.org/rest/json/cves/2.0
 ```
 
-> This project is not affiliated with or endorsed by NIST or the NVD. It mirrors public NVD data and implements a documented subset of the CVE API.
+> This project is independent and is not affiliated with or endorsed by NIST or the NVD.
+
+## Published release artifacts
+
+Release versions are aligned across the application, container image, and Helm chart.
+
+| Artifact | Version/reference |
+|---|---|
+| GitHub release | `v0.2.0` |
+| Docker/OCI image | `ghcr.io/streamscapetv/nvd-mirror:0.2.0` |
+| Convenience image tag | `ghcr.io/streamscapetv/nvd-mirror:latest` |
+| OCI Helm chart | `oci://ghcr.io/streamscapetv/charts/nvd-mirror` with `--version 0.2.0` |
+| Docker Compose release assets | `docker-compose.yml` and `nvd-mirror.env.example` |
+
+Use the versioned image and chart in production. The `latest` image tag is provided for convenience, but it is not immutable.
+
+## Run with Docker Compose without cloning the source
+
+Only Docker Compose and two small release files are required. The deployment Compose file pulls the published image; it does not build the application locally.
+
+```bash
+mkdir nvd-mirror
+cd nvd-mirror
+
+curl -fL -o docker-compose.yml \
+  https://github.com/StreamScapeTV/nvd-mirror/releases/latest/download/docker-compose.yml
+curl -fL -o .env \
+  https://github.com/StreamScapeTV/nvd-mirror/releases/latest/download/nvd-mirror.env.example
+
+mkdir -p volumes/database volumes/nvd-feed-mirror-data volumes/certs
+```
+
+Edit `.env` before starting. At minimum, replace `change-me` in both of these values with the same strong password:
+
+```env
+POSTGRES_PASSWORD=replace-with-a-strong-password
+DATABASE_URL=postgresql+psycopg://nvd:replace-with-a-strong-password@postgres:5432/nvd
+```
+
+The downloaded environment file already selects the matching release image:
+
+```env
+NVD_MIRROR_IMAGE=ghcr.io/streamscapetv/nvd-mirror:0.2.0
+```
+
+Start the service:
+
+```bash
+docker compose pull
+docker compose up -d
+```
+
+Populate a new database with all historical yearly feeds once:
+
+```bash
+docker compose --profile manual run --rm bootstrap
+```
+
+Check the service:
+
+```bash
+docker compose ps
+curl -fsS http://localhost:8000/health
+curl -fsS http://localhost:8000/ready
+```
+
+Open the dashboard at:
+
+```text
+http://localhost:8000/dashboard
+```
+
+Useful operational commands:
+
+```bash
+docker compose logs -f api scheduler
+docker compose --profile manual run --rm sync-modified
+docker compose --profile manual run --rm mirror-all
+docker compose --profile manual run --rm stats-backfill
+docker compose down
+```
+
+Persistent data is stored under:
+
+```text
+./volumes/database               PostgreSQL data
+./volumes/nvd-feed-mirror-data   NVD .meta and .json.gz files
+./volumes/certs                  optional CA and TLS files
+```
+
+## Run with Kubernetes and Helm
+
+Install the published OCI chart directly from GitHub Container Registry:
+
+```bash
+helm upgrade --install nvd-mirror \
+  oci://ghcr.io/streamscapetv/charts/nvd-mirror \
+  --version 0.2.0 \
+  --namespace nvd-mirror \
+  --create-namespace \
+  --set-string postgresql.auth.password='replace-with-a-strong-password'
+```
+
+Chart `0.2.0` uses image `ghcr.io/streamscapetv/nvd-mirror:0.2.0` by default.
+
+The default installation creates:
+
+- one Deployment containing the API and scheduler containers;
+- a persistent raw-feed mirror PVC;
+- a single-instance PostgreSQL StatefulSet and database PVC;
+- a resumable historical bootstrap init container;
+- a ClusterIP Service;
+- an optional Ingress.
+
+The Deployment uses the `Recreate` strategy to avoid `ReadWriteOnce` multi-attach failures. A completion marker on the mirror PVC and a database count check prevent an already completed historical bootstrap from running again unnecessarily.
+
+For an existing populated database, disable the initial bootstrap:
+
+```bash
+--set bootstrap.enabled=false
+```
+
+For an external PostgreSQL database:
+
+```bash
+kubectl create namespace nvd-mirror --dry-run=client -o yaml | kubectl apply -f -
+kubectl -n nvd-mirror create secret generic nvd-mirror-database \
+  --from-literal=DATABASE_URL='postgresql+psycopg://user:password@postgres.example:5432/nvd'
+
+helm upgrade --install nvd-mirror \
+  oci://ghcr.io/streamscapetv/charts/nvd-mirror \
+  --version 0.2.0 \
+  --namespace nvd-mirror \
+  --set postgresql.enabled=false \
+  --set database.existingSecret=nvd-mirror-database \
+  --set bootstrap.enabled=false
+```
+
+Ingress example:
+
+```bash
+helm upgrade --install nvd-mirror \
+  oci://ghcr.io/streamscapetv/charts/nvd-mirror \
+  --version 0.2.0 \
+  --namespace nvd-mirror \
+  --create-namespace \
+  --set-string postgresql.auth.password='replace-with-a-strong-password' \
+  --set ingress.enabled=true \
+  --set ingress.className=nginx \
+  --set ingress.hosts[0].host=nvd.example.org \
+  --set ingress.tls[0].secretName=nvd-example-tls \
+  --set ingress.tls[0].hosts[0]=nvd.example.org
+```
+
+See the [chart documentation](charts/nvd-mirror/README.md) and [`values.yaml`](charts/nvd-mirror/values.yaml) for persistent storage, existing claims, external secrets, private registries, certificates, resources, and scheduling options.
+
+## Upgrades
+
+### Docker Compose
+
+Download the newest release environment file or update `NVD_MIRROR_IMAGE` to the desired immutable version, then run:
+
+```bash
+docker compose pull
+docker compose up -d
+```
+
+The PostgreSQL and feed-mirror bind mounts remain intact.
+
+### Helm
+
+Upgrade both the chart and its matching default image together:
+
+```bash
+helm upgrade nvd-mirror \
+  oci://ghcr.io/streamscapetv/charts/nvd-mirror \
+  --version 0.2.0 \
+  --namespace nvd-mirror \
+  --reuse-values
+```
+
+Review changed values before using `--reuse-values` across future releases.
 
 ## Features
 
 - `.meta`-first NVD JSON 2.0 feed synchronization;
 - interrupted-download retries and atomic file replacement;
-- gzip, compressed size, uncompressed size, SHA-256, and record-count validation;
+- gzip, compressed-size, uncompressed-size, SHA-256, and record-count validation;
 - PostgreSQL-backed CVE storage;
 - read-only `/rest/json/cves/2.0` endpoint;
 - raw `/mirror/nvd/*` feed endpoint;
 - read-only operational dashboard;
 - built-in scheduler for `modified`, `recent`, and yearly feed checks;
-- Docker Compose deployment;
-- Kubernetes Helm chart with optional PostgreSQL, persistent storage, Ingress, and resumable bootstrap;
-- multi-version Python, container, and Helm validation in GitHub Actions.
-
-NVD documents that yearly feeds update daily, while `modified` and `recent` update approximately every two hours. NVD recommends checking `.meta` before downloading `.json.gz`: https://nvd.nist.gov/vuln/data-feeds
+- materialized and resumable dashboard statistics;
+- Docker Compose deployment using the published image;
+- Kubernetes Helm chart with optional PostgreSQL and Ingress;
+- multi-version Python, container, Compose, Helm 3, and Helm 4 validation in GitHub Actions.
 
 ## Architecture
 
@@ -60,112 +236,6 @@ PostgreSQL importer
 
 The API and scheduler share the same PostgreSQL database and raw-feed mirror. Docker Compose runs them as separate services. The Helm chart runs them as sidecars in one pod so a `ReadWriteOnce` mirror volume is mounted by only one pod.
 
-## Docker Compose quick start
-
-```bash
-git clone https://github.com/StreamScapeTV/nvd-mirror.git
-cd nvd-mirror
-cp .env.example .env
-```
-
-Change the PostgreSQL password in `.env`, keeping `DATABASE_URL` consistent. Then:
-
-```bash
-mkdir -p volumes/database volumes/nvd-feed-mirror-data volumes/certs
-docker compose up -d --build
-curl -fsS http://localhost:8000/health
-curl -fsS http://localhost:8000/ready
-```
-
-Open:
-
-```text
-http://localhost:8000/dashboard
-```
-
-Populate a new or partial database once:
-
-```bash
-docker compose --profile manual run --rm bootstrap
-```
-
-Bootstrap imports every yearly feed from `DEFAULT_FROM_YEAR` through the current year, then imports `modified`.
-
-## Kubernetes and Helm
-
-The chart is stored in [`charts/nvd-mirror`](charts/nvd-mirror) and released as an OCI Helm artifact in GitHub Container Registry.
-
-Install the published chart:
-
-```bash
-helm upgrade --install nvd-mirror \
-  oci://ghcr.io/streamscapetv/charts/nvd-mirror \
-  --version 0.1.0 \
-  --namespace nvd-mirror \
-  --create-namespace \
-  --set-string postgresql.auth.password='replace-with-a-strong-password'
-```
-
-Install directly from a clone:
-
-```bash
-helm upgrade --install nvd-mirror ./charts/nvd-mirror \
-  --namespace nvd-mirror \
-  --create-namespace \
-  --set-string postgresql.auth.password='replace-with-a-strong-password'
-```
-
-By default, the chart creates:
-
-- one `nvd-mirror` Deployment containing the API and scheduler containers;
-- a persistent raw-feed mirror PVC;
-- a single-instance PostgreSQL StatefulSet and persistent database storage;
-- a resumable bootstrap init container for the historical feeds;
-- a ClusterIP Service;
-- an optional Kubernetes Ingress.
-
-The Deployment uses the `Recreate` strategy to avoid `ReadWriteOnce` multi-attach failures during upgrades. A marker on the mirror PVC and a database count check prevent a successful historical bootstrap from running again unnecessarily.
-
-For an existing populated database, disable the initial bootstrap:
-
-```bash
---set bootstrap.enabled=false
-```
-
-For an external PostgreSQL database, create a Secret containing `DATABASE_URL`, disable the included database, and reference the Secret:
-
-```bash
-kubectl -n nvd-mirror create secret generic nvd-mirror-database \
-  --from-literal=DATABASE_URL='postgresql+psycopg://user:password@postgres.example:5432/nvd'
-
-helm upgrade --install nvd-mirror \
-  oci://ghcr.io/streamscapetv/charts/nvd-mirror \
-  --version 0.1.0 \
-  --namespace nvd-mirror \
-  --create-namespace \
-  --set postgresql.enabled=false \
-  --set database.existingSecret=nvd-mirror-database \
-  --set bootstrap.enabled=false
-```
-
-Ingress example:
-
-```bash
-helm upgrade --install nvd-mirror \
-  oci://ghcr.io/streamscapetv/charts/nvd-mirror \
-  --version 0.1.0 \
-  --namespace nvd-mirror \
-  --create-namespace \
-  --set-string postgresql.auth.password='replace-with-a-strong-password' \
-  --set ingress.enabled=true \
-  --set ingress.className=nginx \
-  --set ingress.hosts[0].host=nvd.example.org \
-  --set ingress.tls[0].secretName=nvd-example-tls \
-  --set ingress.tls[0].hosts[0]=nvd.example.org
-```
-
-See the [chart documentation](charts/nvd-mirror/README.md) and [`values.yaml`](charts/nvd-mirror/values.yaml) for persistent storage, existing claims, private registries, external secrets, private CAs, resource limits, scheduling, and all environment-backed settings.
-
 ## Synchronization
 
 Default behavior:
@@ -176,37 +246,17 @@ Default behavior:
 - six-second minimum delay between upstream requests;
 - unchanged `.json.gz` files are never downloaded.
 
-Manual Docker Compose commands:
-
-```bash
-docker compose --profile manual run --rm sync-modified
-docker compose --profile manual run --rm mirror-all
-docker compose run --rm --entrypoint python scheduler -m app.scheduler --print-plan
-```
-
-## Persistent data
-
-Docker Compose uses:
-
-```text
-./volumes/database               PostgreSQL data
-./volumes/nvd-feed-mirror-data   NVD .meta and .json.gz files
-./volumes/certs                  optional CA and TLS files
-```
-
-The Helm chart uses separate persistent volumes for PostgreSQL and the raw feed mirror. Existing claims are supported through `postgresql.persistence.existingClaim` and `persistence.existingClaim`.
+NVD documents that yearly feeds update daily, while `modified` and `recent` update approximately every two hours. The mirror checks `.meta` first and downloads `.json.gz` only when the upstream metadata changes.
 
 ## Configuration
 
-Docker Compose reads `.env` as its single configuration entry point. The Helm chart exposes equivalent settings under `config`, `database`, `nvdApiKey`, `postgresql`, and `persistence`.
+Docker Compose uses `.env` as its single configuration entry point. The Helm chart exposes equivalent settings under `config`, Secrets, and database values.
 
-Important environment settings:
+Important variables:
 
 ```env
-APP_NAME=nvd-mirror
-APP_VERSION=0.1.0
-NVD_MIRROR_IMAGE=nvd-mirror:local
-DATABASE_URL=postgresql+psycopg://nvd:change-me@postgres:5432/nvd
+NVD_MIRROR_IMAGE=ghcr.io/streamscapetv/nvd-mirror:0.2.0
+DATABASE_URL=postgresql+psycopg://nvd:password@postgres:5432/nvd
 NVD_MIRROR_BASE_URL=https://nvd.nist.gov/feeds/json/cve/2.0
 NVD_FEED_SOURCE_MODE=managed
 NVD_FEED_MIRROR_DIR=/data/mirror/nvd
@@ -221,13 +271,13 @@ Feed modes:
 |---|---|
 | `managed` | Download locally, validate, then import |
 | `local` | Use existing local files without upstream access |
-| `remote` | Direct upstream download/import compatibility mode |
+| `remote` | Direct upstream download/import behavior |
 
 `NVD_FEED_UPSTREAM_BASE_URL`, when set, overrides `NVD_MIRROR_BASE_URL`.
 
 The optional `NVD_API_KEY` is used only for lightweight live API total checks in the dashboard. Feed downloads do not require it. Live totals are cached server-side for five minutes.
 
-### Validation
+Validation controls:
 
 ```env
 VALIDATE_META=true
@@ -238,21 +288,7 @@ VALIDATE_UNCOMPRESSED_SHA256=true
 
 An invalid or incomplete download never replaces an existing valid local file.
 
-### TLS
-
-Most deployments should terminate public TLS at a reverse proxy or Kubernetes Ingress. To trust a private upstream CA:
-
-```env
-UPSTREAM_VERIFY_TLS=true
-UPSTREAM_CA_BUNDLE=/certs/private-ca.pem
-```
-
-Optional application-level TLS:
-
-```env
-TLS_CERT_FILE=/certs/tls.crt
-TLS_KEY_FILE=/certs/tls.key
-```
+Most deployments should terminate public TLS at a reverse proxy or Ingress. Private upstream CAs can be mounted under `/certs` and selected with `UPSTREAM_CA_BUNDLE`.
 
 ## API compatibility
 
@@ -274,7 +310,7 @@ Supported parameters:
 
 The endpoint is read-only and token-free. Incoming `apiKey` values are tolerated and ignored.
 
-This is not a complete implementation of every NVD CVE API parameter or every nuanced search semantic. ID, date filtering, sorting, pagination, and response envelope behavior are regression-tested. Text and CPE search use local JSON text matching and should be validated for each client.
+This is not a complete implementation of every NVD CVE API parameter or every nuanced search semantic. ID, date filtering, sorting, pagination, and response-envelope behavior are regression-tested. Text and CPE search use local JSON text matching and should be validated for each client.
 
 ```bash
 curl -fsS 'http://localhost:8000/rest/json/cves/2.0?resultsPerPage=1&startIndex=0' | jq
@@ -303,91 +339,15 @@ nvd_cve_derived_stats
 nvd_dashboard_stats_snapshots
 ```
 
-New imports update these incrementally. For an existing database created before materialized statistics were available, run the resumable backfill:
+New imports update these incrementally. For a database created before materialized statistics were available, run the resumable `stats-backfill` Compose profile or the corresponding application command. Partial breakdowns remain hidden until coverage is complete.
 
-```bash
-docker compose --profile manual run --rm stats-backfill
-```
+## Development and contribution
 
-Partial breakdowns are hidden until coverage is complete.
-
-## Tests and validation
-
-```bash
-python -m venv .venv
-. .venv/bin/activate
-python -m pip install -r requirements-dev.txt
-pytest -q
-python -m compileall -q app tests
-bash -n scripts/*.sh
-```
-
-Docker test stage:
-
-```bash
-docker compose --profile test run --rm test
-```
-
-Helm validation:
-
-```bash
-helm lint charts/nvd-mirror \
-  --set-string postgresql.auth.password=ci-password \
-  --set bootstrap.enabled=false
-
-helm template nvd-mirror charts/nvd-mirror \
-  --namespace nvd-mirror \
-  --set-string postgresql.auth.password=ci-password \
-  --set bootstrap.enabled=false \
-  > /tmp/nvd-mirror.yaml
-```
-
-Running-service checks:
-
-```bash
-API_BASE_URL=http://localhost:8000 ./scripts/smoke_test.sh
-API_BASE_URL=http://localhost:8000 ./scripts/nvd_full_regression_test.sh
-```
-
-Completeness and optional live parity checks:
-
-```bash
-CACHE_API_BASE=http://localhost:8000/rest/json/cves/2.0 ./scripts/nvd_feed_baseline_test.sh
-API_BASE_URL=http://localhost:8000 ./scripts/nvd_mirror_file_baseline_test.sh
-CACHE_API_BASE=http://localhost:8000/rest/json/cves/2.0 OFFICIAL_FEED_BASE_URL=https://nvd.nist.gov/feeds/json/cve/2.0 ./scripts/nvd_live_feed_baseline_test.sh
-```
-
-Live comparison scripts contact NVD and should be run deliberately, not in every normal CI execution. See [docs/VALIDATION.md](docs/VALIDATION.md) for the deterministic checklist.
-
-## Images and Helm releases
-
-Build a local image:
-
-```bash
-docker build --build-arg APP_VERSION=0.1.0 -t nvd-mirror:0.1.0 .
-```
-
-Publish a multi-platform image manually:
-
-```bash
-docker buildx build \
-  --platform linux/amd64,linux/arm64 \
-  --build-arg APP_VERSION=0.1.0 \
-  -t ghcr.io/your-org/nvd-mirror:0.1.0 \
-  --push .
-```
-
-GitHub Actions test every change. Version tags such as `v0.1.0` publish the multi-platform application image and the matching OCI Helm chart to GitHub Container Registry.
+End users do not need the source tree. Source checkout, local builds, tests, and contributor Compose instructions are documented in [CONTRIBUTING.md](CONTRIBUTING.md). The full deterministic validation checklist is in [docs/VALIDATION.md](docs/VALIDATION.md).
 
 ## Security
 
-Never commit `.env`, credentials, API keys, private CAs, TLS private keys, database files, or downloaded feeds. Keep PostgreSQL private unless external access is intentional. Protect the API/dashboard with network controls, a reverse proxy, or Ingress when exposed outside a trusted network. See [SECURITY.md](SECURITY.md).
-
-For production installations, prefer existing Kubernetes Secrets or an external secret manager instead of putting passwords directly in Helm values.
-
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md).
+Never commit `.env`, credentials, API keys, private CAs, TLS private keys, database files, or downloaded feeds. Keep PostgreSQL bound to loopback unless external access is intentional. Protect the API and dashboard with network controls or a reverse proxy when exposed outside a trusted network. See [SECURITY.md](SECURITY.md).
 
 ## License
 

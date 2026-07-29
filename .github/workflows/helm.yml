@@ -9,6 +9,11 @@ on:
       - 'docs/VALIDATION.md'
       - 'app/version.py'
       - 'pyproject.toml'
+      - 'Dockerfile'
+      - 'Makefile'
+      - 'docker-compose.yml'
+      - 'docker-compose.dev.yml'
+      - '.env.example'
   push:
     branches: [main]
     tags: ['v*']
@@ -19,10 +24,15 @@ on:
       - 'docs/VALIDATION.md'
       - 'app/version.py'
       - 'pyproject.toml'
+      - 'Dockerfile'
+      - 'Makefile'
+      - 'docker-compose.yml'
+      - 'docker-compose.dev.yml'
+      - '.env.example'
   workflow_dispatch:
     inputs:
       version:
-        description: Version to publish; it must match Chart.yaml and application metadata
+        description: Version to publish; it must match all release metadata
         required: false
         type: string
 
@@ -60,16 +70,39 @@ jobs:
 
           chart_version, chart_app_version = sys.argv[1:]
           pyproject_version = tomllib.loads(pathlib.Path('pyproject.toml').read_text())['project']['version']
+
           source = pathlib.Path('app/version.py').read_text()
           match = re.search(r'__version__\s*=\s*["\']([^"\']+)["\']', source)
           if not match:
               raise SystemExit('Unable to read __version__ from app/version.py')
           application_version = match.group(1)
+
+          env_source = pathlib.Path('.env.example').read_text()
+          match = re.search(r'^NVD_MIRROR_IMAGE=.*:([^\s]+)$', env_source, re.MULTILINE)
+          if not match:
+              raise SystemExit('Unable to read NVD_MIRROR_IMAGE tag from .env.example')
+          compose_image_version = match.group(1)
+
+          dockerfile = pathlib.Path('Dockerfile').read_text()
+          match = re.search(r'^ARG APP_VERSION=([^\s]+)$', dockerfile, re.MULTILINE)
+          if not match:
+              raise SystemExit('Unable to read APP_VERSION from Dockerfile')
+          dockerfile_version = match.group(1)
+
+          makefile = pathlib.Path('Makefile').read_text()
+          match = re.search(r'^VERSION \?= ([^\s]+)$', makefile, re.MULTILINE)
+          if not match:
+              raise SystemExit('Unable to read VERSION from Makefile')
+          makefile_version = match.group(1)
+
           versions = {
               'chart': chart_version,
               'chart appVersion': chart_app_version,
               'pyproject': pyproject_version,
               'application': application_version,
+              'Compose image': compose_image_version,
+              'Dockerfile': dockerfile_version,
+              'Makefile': makefile_version,
           }
           if len(set(versions.values())) != 1:
               raise SystemExit(f'Release versions are not aligned: {versions}')
@@ -112,14 +145,14 @@ jobs:
           test -f "dist/nvd-mirror-${chart_version}.tgz"
 
   publish:
-    name: Publish image and OCI chart
+    name: Publish image, OCI chart, and GitHub release
     needs: validate
     if: >-
       startsWith(github.ref, 'refs/tags/v') ||
       (github.event_name == 'workflow_dispatch' && inputs.version != '')
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
       packages: write
     steps:
       - name: Check out repository
@@ -151,7 +184,7 @@ jobs:
             version="${REQUESTED_VERSION}"
           fi
           if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]; then
-            echo "Version must be semantic, for example 0.1.0; got: $version" >&2
+            echo "Version must be semantic, for example 0.2.0; got: $version" >&2
             exit 1
           fi
           if [[ "$version" != "$chart_version" || "$version" != "$app_version" ]]; then
@@ -166,11 +199,23 @@ jobs:
 
           expected = sys.argv[1]
           pyproject_version = tomllib.loads(pathlib.Path('pyproject.toml').read_text())['project']['version']
+
           source = pathlib.Path('app/version.py').read_text()
           match = re.search(r'__version__\s*=\s*["\']([^"\']+)["\']', source)
           if not match:
               raise SystemExit('Unable to read __version__ from app/version.py')
-          versions = {'requested': expected, 'pyproject': pyproject_version, 'application': match.group(1)}
+
+          env_source = pathlib.Path('.env.example').read_text()
+          env_match = re.search(r'^NVD_MIRROR_IMAGE=.*:([^\s]+)$', env_source, re.MULTILINE)
+          if not env_match:
+              raise SystemExit('Unable to read NVD_MIRROR_IMAGE tag from .env.example')
+
+          versions = {
+              'requested': expected,
+              'pyproject': pyproject_version,
+              'application': match.group(1),
+              'Compose image': env_match.group(1),
+          }
           if len(set(versions.values())) != 1:
               raise SystemExit(f'Release versions are not aligned: {versions}')
           PY
@@ -209,6 +254,12 @@ jobs:
           provenance: mode=max
           sbom: true
 
+      - name: Verify published application image
+        env:
+          IMAGE: ${{ steps.release.outputs.image }}
+          VERSION: ${{ steps.release.outputs.version }}
+        run: docker buildx imagetools inspect "${IMAGE}:${VERSION}"
+
       - name: Package chart
         env:
           VERSION: ${{ steps.release.outputs.version }}
@@ -238,3 +289,120 @@ jobs:
           CHART_REFERENCE: ${{ steps.release.outputs.chart_reference }}
           VERSION: ${{ steps.release.outputs.version }}
         run: helm show chart "$CHART_REFERENCE" --version "$VERSION"
+
+      - name: Prepare GitHub release assets and notes
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+          IMAGE: ${{ steps.release.outputs.image }}
+          CHART_REFERENCE: ${{ steps.release.outputs.chart_reference }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp docker-compose.yml dist/docker-compose.yml
+          cp .env.example dist/nvd-mirror.env.example
+          (
+            cd dist
+            sha256sum \
+              docker-compose.yml \
+              nvd-mirror.env.example \
+              "nvd-mirror-${VERSION}.tgz" \
+              > SHA256SUMS
+          )
+          cat > dist/release-notes.md <<EOF
+          # nvd-mirror ${VERSION}
+
+          This release is ready to deploy without cloning or building the source repository.
+
+          ## Published artifacts
+
+          | Artifact | Reference |
+          |---|---|
+          | Versioned application image | \`${IMAGE}:${VERSION}\` |
+          | Convenience application image | \`${IMAGE}:latest\` |
+          | OCI Helm chart | \`${CHART_REFERENCE}\` with \`--version ${VERSION}\` |
+          | Docker Compose manifest | \`docker-compose.yml\` release asset |
+          | Docker Compose environment template | \`nvd-mirror.env.example\` release asset |
+          | Packaged Helm chart | \`nvd-mirror-${VERSION}.tgz\` release asset |
+
+          The application version, Docker image tag, Helm chart version, and chart \`appVersion\` are all ${VERSION}.
+
+          ## Docker Compose quick start
+
+          \`docker-compose.yml\` pulls \`${IMAGE}:${VERSION}\`; it does not build the application locally.
+
+          \`\`\`bash
+          mkdir nvd-mirror && cd nvd-mirror
+          curl -fL -o docker-compose.yml \\
+            https://github.com/${GITHUB_REPOSITORY}/releases/download/v${VERSION}/docker-compose.yml
+          curl -fL -o .env \\
+            https://github.com/${GITHUB_REPOSITORY}/releases/download/v${VERSION}/nvd-mirror.env.example
+          mkdir -p volumes/database volumes/nvd-feed-mirror-data volumes/certs
+          # Edit POSTGRES_PASSWORD and DATABASE_URL in .env before starting.
+          docker compose pull
+          docker compose up -d
+          docker compose --profile manual run --rm bootstrap
+          \`\`\`
+
+          Dashboard: \`http://localhost:8000/dashboard\`
+
+          ## Helm quick start
+
+          \`\`\`bash
+          helm upgrade --install nvd-mirror \\
+            ${CHART_REFERENCE} \\
+            --version ${VERSION} \\
+            --namespace nvd-mirror \\
+            --create-namespace \\
+            --set-string postgresql.auth.password='replace-with-a-strong-password'
+          \`\`\`
+
+          The chart pulls \`${IMAGE}:${VERSION}\` by default.
+
+          ## Source development
+
+          Source checkout and local image-build instructions are documented in [CONTRIBUTING.md](https://github.com/${GITHUB_REPOSITORY}/blob/v${VERSION}/CONTRIBUTING.md). End users do not need the source tree.
+          EOF
+
+      - name: Create or update GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.release.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="v${VERSION}"
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release edit "$tag" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "nvd-mirror ${VERSION}" \
+              --notes-file dist/release-notes.md
+          else
+            gh release create "$tag" \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" \
+              --title "nvd-mirror ${VERSION}" \
+              --notes-file dist/release-notes.md
+          fi
+          gh release upload "$tag" \
+            --repo "$GITHUB_REPOSITORY" \
+            --clobber \
+            dist/docker-compose.yml \
+            dist/nvd-mirror.env.example \
+            "dist/nvd-mirror-${VERSION}.tgz" \
+            dist/SHA256SUMS
+
+      - name: Verify GitHub release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.release.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          assets=$(gh release view "v${VERSION}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --json assets \
+            --jq '.assets[].name')
+          grep -qx 'docker-compose.yml' <<<"$assets"
+          grep -qx 'nvd-mirror.env.example' <<<"$assets"
+          grep -qx "nvd-mirror-${VERSION}.tgz" <<<"$assets"
+          grep -qx 'SHA256SUMS' <<<"$assets"
