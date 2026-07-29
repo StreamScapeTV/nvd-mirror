@@ -1,0 +1,78 @@
+name: nvd-mirror
+
+x-app: &app
+  build:
+    context: .
+    target: runtime
+  image: ${NVD_MIRROR_IMAGE}
+  env_file:
+    - .env
+  depends_on:
+    postgres:
+      condition: service_healthy
+  volumes:
+    - ./volumes/nvd-feed-mirror-data:${NVD_FEED_MIRROR_DIR}
+    - ./volumes/certs:/certs:ro
+  init: true
+
+services:
+  postgres:
+    image: postgres:17
+    env_file:
+      - .env
+    ports:
+      - "127.0.0.1:${POSTGRES_HOST_PORT}:5432"
+    volumes:
+      - ./volumes/database:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+
+  api:
+    <<: *app
+    ports:
+      - "${API_HOST_PORT}:${PORT}"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS \"http://localhost:$${PORT}/health\""]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+
+  scheduler:
+    <<: *app
+    command: ["python", "-m", "app.scheduler"]
+    restart: unless-stopped
+
+  bootstrap:
+    <<: *app
+    profiles: ["manual"]
+    command: ["python", "-m", "app.sync", "bootstrap"]
+
+  sync-modified:
+    <<: *app
+    profiles: ["manual"]
+    command: ["python", "-m", "app.sync", "modified"]
+
+  mirror-all:
+    <<: *app
+    profiles: ["manual"]
+    command: ["python", "-m", "app.feed_mirror", "all"]
+
+  stats-backfill:
+    <<: *app
+    profiles: ["manual"]
+    command: ["python", "-m", "app.nvd_stats", "backfill-missing", "--batch-size", "1000"]
+
+  test:
+    build:
+      context: .
+      target: test
+    image: ${NVD_MIRROR_IMAGE}-test
+    profiles: ["test"]
+    environment:
+      DATABASE_URL: sqlite:////tmp/nvd-mirror-tests.sqlite3
+    command: ["pytest", "-q"]
