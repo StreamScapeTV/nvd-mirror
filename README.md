@@ -1,8 +1,8 @@
 # NVD Mirror
 
-[![CI](https://github.com/StreamScapeTV/nvd-mirror/actions/workflows/ci.yml/badge.svg)](https://github.com/StreamScapeTV/nvd-mirror/actions/workflows/ci.yml)
-[![Container](https://github.com/StreamScapeTV/nvd-mirror/actions/workflows/container.yml/badge.svg)](https://github.com/StreamScapeTV/nvd-mirror/actions/workflows/container.yml)
-[![Helm](https://github.com/StreamScapeTV/nvd-mirror/actions/workflows/helm.yml/badge.svg)](https://github.com/StreamScapeTV/nvd-mirror/actions/workflows/helm.yml)
+[![CI](https://github.com/mimranfaruqi/nvd-mirror/actions/workflows/ci.yml/badge.svg)](https://github.com/mimranfaruqi/nvd-mirror/actions/workflows/ci.yml)
+[![Container](https://github.com/mimranfaruqi/nvd-mirror/actions/workflows/container.yml/badge.svg)](https://github.com/mimranfaruqi/nvd-mirror/actions/workflows/container.yml)
+[![Helm](https://github.com/mimranfaruqi/nvd-mirror/actions/workflows/helm.yml/badge.svg)](https://github.com/mimranfaruqi/nvd-mirror/actions/workflows/helm.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 `nvd-mirror` is a self-hosted mirror for the NIST National Vulnerability Database (NVD) JSON 2.0 CVE feeds. It stores validated feed files, imports CVEs into PostgreSQL, exposes a read-only NVD CVE API-compatible endpoint, serves the raw mirror files, and provides an operational dashboard.
@@ -22,10 +22,10 @@ Release versions are aligned across the application, container image, and Helm c
 
 | Artifact | Version/reference |
 |---|---|
-| GitHub release | `v0.2.0` |
-| Docker/OCI image | `ghcr.io/streamscapetv/nvd-mirror:0.2.0` |
-| Convenience image tag | `ghcr.io/streamscapetv/nvd-mirror:latest` |
-| OCI Helm chart | `oci://ghcr.io/streamscapetv/charts/nvd-mirror` with `--version 0.2.0` |
+| GitHub release | `v0.2.1` |
+| Docker/OCI image | `ghcr.io/mimranfaruqi/nvd-mirror:0.2.1` |
+| Convenience image tag | `ghcr.io/mimranfaruqi/nvd-mirror:latest` |
+| OCI Helm chart | `oci://ghcr.io/mimranfaruqi/charts/nvd-mirror` with `--version 0.2.1` |
 | Docker Compose release assets | `docker-compose.yml` and `nvd-mirror.env.example` |
 
 Use the versioned image and chart in production. The `latest` image tag is provided for convenience, but it is not immutable.
@@ -39,9 +39,9 @@ mkdir nvd-mirror
 cd nvd-mirror
 
 curl -fL -o docker-compose.yml \
-  https://github.com/StreamScapeTV/nvd-mirror/releases/latest/download/docker-compose.yml
+  https://github.com/mimranfaruqi/nvd-mirror/releases/latest/download/docker-compose.yml
 curl -fL -o .env \
-  https://github.com/StreamScapeTV/nvd-mirror/releases/latest/download/nvd-mirror.env.example
+  https://github.com/mimranfaruqi/nvd-mirror/releases/latest/download/nvd-mirror.env.example
 
 mkdir -p volumes/database volumes/nvd-feed-mirror-data volumes/certs
 ```
@@ -56,7 +56,7 @@ DATABASE_URL=postgresql+psycopg://nvd:replace-with-a-strong-password@postgres:54
 The downloaded environment file already selects the matching release image:
 
 ```env
-NVD_MIRROR_IMAGE=ghcr.io/streamscapetv/nvd-mirror:0.2.0
+NVD_MIRROR_IMAGE=ghcr.io/mimranfaruqi/nvd-mirror:0.2.1
 ```
 
 Start the service:
@@ -110,14 +110,14 @@ Install the published OCI chart directly from GitHub Container Registry:
 
 ```bash
 helm upgrade --install nvd-mirror \
-  oci://ghcr.io/streamscapetv/charts/nvd-mirror \
-  --version 0.2.0 \
+  oci://ghcr.io/mimranfaruqi/charts/nvd-mirror \
+  --version 0.2.1 \
   --namespace nvd-mirror \
   --create-namespace \
   --set-string postgresql.auth.password='replace-with-a-strong-password'
 ```
 
-Chart `0.2.0` uses image `ghcr.io/streamscapetv/nvd-mirror:0.2.0` by default.
+Chart `0.2.1` uses image `ghcr.io/mimranfaruqi/nvd-mirror:0.2.1` by default.
 
 The default installation creates:
 
@@ -144,8 +144,8 @@ kubectl -n nvd-mirror create secret generic nvd-mirror-database \
   --from-literal=DATABASE_URL='postgresql+psycopg://user:password@postgres.example:5432/nvd'
 
 helm upgrade --install nvd-mirror \
-  oci://ghcr.io/streamscapetv/charts/nvd-mirror \
-  --version 0.2.0 \
+  oci://ghcr.io/mimranfaruqi/charts/nvd-mirror \
+  --version 0.2.1 \
   --namespace nvd-mirror \
   --set postgresql.enabled=false \
   --set database.existingSecret=nvd-mirror-database \
@@ -156,8 +156,8 @@ Ingress example:
 
 ```bash
 helm upgrade --install nvd-mirror \
-  oci://ghcr.io/streamscapetv/charts/nvd-mirror \
-  --version 0.2.0 \
+  oci://ghcr.io/mimranfaruqi/charts/nvd-mirror \
+  --version 0.2.1 \
   --namespace nvd-mirror \
   --create-namespace \
   --set-string postgresql.auth.password='replace-with-a-strong-password' \
@@ -189,8 +189,8 @@ Upgrade both the chart and its matching default image together:
 
 ```bash
 helm upgrade nvd-mirror \
-  oci://ghcr.io/streamscapetv/charts/nvd-mirror \
-  --version 0.2.0 \
+  oci://ghcr.io/mimranfaruqi/charts/nvd-mirror \
+  --version 0.2.1 \
   --namespace nvd-mirror \
   --reuse-values
 ```
@@ -255,7 +255,7 @@ Docker Compose uses `.env` as its single configuration entry point. The Helm cha
 Important variables:
 
 ```env
-NVD_MIRROR_IMAGE=ghcr.io/streamscapetv/nvd-mirror:0.2.0
+NVD_MIRROR_IMAGE=ghcr.io/mimranfaruqi/nvd-mirror:0.2.1
 DATABASE_URL=postgresql+psycopg://nvd:password@postgres:5432/nvd
 NVD_MIRROR_BASE_URL=https://nvd.nist.gov/feeds/json/cve/2.0
 NVD_FEED_SOURCE_MODE=managed

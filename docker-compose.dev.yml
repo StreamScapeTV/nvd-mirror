@@ -3,7 +3,7 @@ x-runtime-build: &runtime-build
     context: .
     target: runtime
     args:
-      APP_VERSION: ${APP_VERSION:-0.2.0}
+      APP_VERSION: ${APP_VERSION:-0.2.1}
   image: nvd-mirror:local
   pull_policy: never
 
@@ -31,7 +31,7 @@ services:
       context: .
       target: test
       args:
-        APP_VERSION: ${APP_VERSION:-0.2.0}
+        APP_VERSION: ${APP_VERSION:-0.2.1}
     image: nvd-mirror:test
     pull_policy: never
     profiles: ["test"]

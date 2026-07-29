@@ -1,5 +1,8 @@
 FROM python:3.14-slim AS runtime
-ARG APP_VERSION=0.2.0
+ARG APP_VERSION=0.2.1
+LABEL org.opencontainers.image.source="https://github.com/mimranfaruqi/nvd-mirror" \
+      org.opencontainers.image.licenses="MIT" \
+      org.opencontainers.image.version="${APP_VERSION}"
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
