@@ -1,0 +1,33 @@
+name: Repository inventory
+
+on:
+  push:
+    branches: [repository-finalization]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  inventory:
+    runs-on: ubuntu-latest
+    steps:
+      - name: List repository state
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_SESSION_TOKEN: ${{ secrets.GH_SESSION_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '=== branches ==='
+          gh api --paginate "repos/${GITHUB_REPOSITORY}/branches?per_page=100" --jq '.[].name'
+          echo '=== open pull requests ==='
+          gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls?state=open&per_page=100" --jq '.[] | "#\(.number) \(.head.ref) -> \(.base.ref): \(.title)"'
+          echo '=== active rules ==='
+          gh api "repos/${GITHUB_REPOSITORY}/rules/branches/main" --jq '.[] | "\(.type) ruleset=\(.ruleset_id) source=\(.ruleset_source)"' || true
+          if [[ -n "${GH_SESSION_TOKEN:-}" ]]; then
+            echo 'GH_SESSION_TOKEN_AVAILABLE=yes'
+          else
+            echo 'GH_SESSION_TOKEN_AVAILABLE=no'
+          fi
