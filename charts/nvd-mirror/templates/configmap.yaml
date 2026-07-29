@@ -1,0 +1,47 @@
+{{- include "nvd-mirror.validateValues" . }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "nvd-mirror.fullname" . }}
+  labels:
+    {{- include "nvd-mirror.labels" . | nindent 4 }}
+data:
+  APP_NAME: {{ .Values.config.appName | quote }}
+  APP_VERSION: {{ default .Chart.AppVersion .Values.config.appVersion | quote }}
+  HOST: {{ .Values.config.host | quote }}
+  PORT: {{ .Values.config.port | quote }}
+  NVD_MIRROR_BASE_URL: {{ .Values.config.nvdMirrorBaseUrl | quote }}
+  NVD_FEED_UPSTREAM_BASE_URL: {{ .Values.config.nvdFeedUpstreamBaseUrl | quote }}
+  NVD_FEED_SOURCE_MODE: {{ .Values.config.nvdFeedSourceMode | quote }}
+  NVD_FEED_MIRROR_DIR: {{ .Values.config.nvdFeedMirrorDir | quote }}
+  NVD_API_CVES_URL: {{ .Values.config.nvdApiCvesUrl | quote }}
+  NVD_API_CPES_URL: {{ .Values.config.nvdApiCpesUrl | quote }}
+  LIVE_NVD_TOTAL_CACHE_TTL_SECONDS: {{ .Values.config.liveNvdTotalCacheTtlSeconds | quote }}
+  DASHBOARD_STATS_CACHE_SECONDS: {{ .Values.config.dashboardStatsCacheSeconds | quote }}
+  NVD_UPSTREAM_REQUEST_DELAY_SECONDS: {{ .Values.config.nvdUpstreamRequestDelaySeconds | quote }}
+  NVD_UPSTREAM_RETRIES: {{ .Values.config.nvdUpstreamRetries | quote }}
+  NVD_UPSTREAM_RETRY_BACKOFF_SECONDS: {{ .Values.config.nvdUpstreamRetryBackoffSeconds | quote }}
+  NVD_DOWNLOAD_PROGRESS_INTERVAL_BYTES: {{ .Values.config.nvdDownloadProgressIntervalBytes | quote }}
+  NVD_USER_AGENT: {{ default (printf "nvd-mirror/%s (+https://github.com/StreamScapeTV/nvd-mirror)" (default .Chart.AppVersion .Values.config.appVersion)) .Values.config.nvdUserAgent | quote }}
+  REQUEST_TIMEOUT_SECONDS: {{ .Values.config.requestTimeoutSeconds | quote }}
+  DEFAULT_FROM_YEAR: {{ .Values.config.defaultFromYear | quote }}
+  MAX_RESULTS_PER_PAGE: {{ .Values.config.maxResultsPerPage | quote }}
+  VALIDATE_META: {{ .Values.config.validateMeta | quote }}
+  VALIDATE_GZ_SIZE: {{ .Values.config.validateGzSize | quote }}
+  VALIDATE_UNCOMPRESSED_SIZE: {{ .Values.config.validateUncompressedSize | quote }}
+  VALIDATE_UNCOMPRESSED_SHA256: {{ .Values.config.validateUncompressedSha256 | quote }}
+  UPSTREAM_VERIFY_TLS: {{ .Values.config.upstreamVerifyTls | quote }}
+  UPSTREAM_CA_BUNDLE: {{ .Values.config.upstreamCaBundle | quote }}
+  TLS_CERT_FILE: {{ .Values.config.tlsCertFile | quote }}
+  TLS_KEY_FILE: {{ .Values.config.tlsKeyFile | quote }}
+  SCHEDULER_ENABLED: {{ .Values.scheduler.enabled | quote }}
+  SCHEDULER_RUN_ON_STARTUP: {{ .Values.config.schedulerRunOnStartup | quote }}
+  SCHEDULER_MAX_SLEEP_SECONDS: {{ .Values.config.schedulerMaxSleepSeconds | quote }}
+  NVD_SYNC_TIMEZONE: {{ .Values.config.nvdSyncTimezone | quote }}
+  NVD_SYNC_MODIFIED_ENABLED: {{ .Values.config.nvdSyncModifiedEnabled | quote }}
+  NVD_SYNC_MODIFIED_EVERY_HOURS: {{ .Values.config.nvdSyncModifiedEveryHours | quote }}
+  NVD_SYNC_MODIFIED_MINUTE: {{ .Values.config.nvdSyncModifiedMinute | quote }}
+  NVD_SYNC_DAILY_MIRROR_ENABLED: {{ .Values.config.nvdSyncDailyMirrorEnabled | quote }}
+  NVD_SYNC_DAILY_MIRROR_HOUR: {{ .Values.config.nvdSyncDailyMirrorHour | quote }}
+  NVD_SYNC_DAILY_MIRROR_MINUTE: {{ .Values.config.nvdSyncDailyMirrorMinute | quote }}
+  NVD_SYNC_DAILY_MIRROR_FORCE: {{ .Values.config.nvdSyncDailyMirrorForce | quote }}

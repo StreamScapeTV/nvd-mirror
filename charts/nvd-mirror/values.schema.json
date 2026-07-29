@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {
+    "replicaCount": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1,
+      "description": "The chart intentionally runs one pod because the scheduler and local feed mirror are singleton resources."
+    },
+    "image": {
+      "type": "object",
+      "required": ["repository", "pullPolicy", "tag"],
+      "properties": {
+        "repository": {"type": "string", "minLength": 1},
+        "pullPolicy": {"type": "string", "enum": ["Always", "IfNotPresent", "Never"]},
+        "tag": {"type": "string"}
+      }
+    },
+    "service": {
+      "type": "object",
+      "required": ["type", "port"],
+      "properties": {
+        "type": {"type": "string", "enum": ["ClusterIP", "NodePort", "LoadBalancer"]},
+        "port": {"type": "integer", "minimum": 1, "maximum": 65535}
+      }
+    },
+    "persistence": {
+      "type": "object",
+      "required": ["enabled", "accessModes", "size"],
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "existingClaim": {"type": "string"},
+        "storageClass": {"type": "string"},
+        "accessModes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string"}
+        },
+        "size": {"type": "string", "minLength": 1}
+      }
+    },
+    "bootstrap": {
+      "type": "object",
+      "required": ["enabled", "force", "markerFile"],
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "force": {"type": "boolean"},
+        "markerFile": {"type": "string", "minLength": 1}
+      }
+    },
+    "postgresql": {
+      "type": "object",
+      "required": ["enabled", "auth", "persistence"],
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "auth": {
+          "type": "object",
+          "required": ["database", "username", "password"],
+          "properties": {
+            "database": {"type": "string", "minLength": 1},
+            "username": {"type": "string", "minLength": 1},
+            "password": {"type": "string"}
+          }
+        }
+      }
+    },
+    "config": {
+      "type": "object",
+      "required": ["port", "nvdFeedSourceMode", "nvdFeedMirrorDir"],
+      "properties": {
+        "port": {"type": "integer", "minimum": 1, "maximum": 65535},
+        "nvdFeedSourceMode": {"type": "string", "enum": ["managed", "local", "remote"]},
+        "nvdFeedMirrorDir": {"type": "string", "minLength": 1},
+        "nvdUpstreamRetries": {"type": "integer", "minimum": 0},
+        "nvdDownloadProgressIntervalBytes": {"type": "integer", "minimum": 1},
+        "defaultFromYear": {"type": "integer", "minimum": 1999},
+        "maxResultsPerPage": {"type": "integer", "minimum": 1, "maximum": 2000}
+      }
+    }
+  }
+}
